@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  background-color: #f5f4ee;
+  color: #12211c;
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Orbitron', sans-serif;
+}
+
+.leaflet-container {
+  font-family: 'Manrope', sans-serif;
+  background-color: #f1eee4;
+}

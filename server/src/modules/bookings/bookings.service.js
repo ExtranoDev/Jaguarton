@@ -1,0 +1,136 @@
+const db = require('../../config/db');
+const { NotFoundError, ConflictError, ForbiddenError } = require('../../utils/errors');
+const { isUniqueViolation } = require('../../utils/dbErrors');
+const { generateBookingReference } = require('../../utils/bookingReference');
+
+// Booking rows joined with the slot time, charger and station info that the
+// driver-facing screens need (the raw row only has foreign keys).
+function detailedBookings(conn = db) {
+  return conn('bookings as b')
+    .innerJoin('slots as sl', 'sl.id', 'b.slot_id')
+    .innerJoin('chargers as c', 'c.id', 'b.charger_id')
+    .innerJoin('stations as s', 's.id', 'b.station_id')
+    .select(
+      'b.*',
+      'sl.start_time',
+      'sl.end_time',
+      'c.connector_type',
+      'c.power_kw',
+      's.name as station_name',
+      's.address as station_address'
+    );
+}
+
+// Concurrency-safe booking creation. Three independent layers guard against
+// two drivers booking the same slot at the same time:
+//   1. SELECT ... FOR UPDATE inside a transaction (row lock; no-ops on SQLite,
+//      which is single-writer anyway, so layers 2-3 still hold there).
+//   2. An atomic conditional UPDATE (`WHERE status = 'available'`) is the
+//      real gate — if it affects 0 rows, another request already won.
+//   3. A partial unique index on bookings(slot_id) WHERE status='confirmed'
+//      is a DB-level backstop independent of this code path.
+async function createBooking({ slotId, userId }) {
+  return db.transaction(async (trx) => {
+    const slot = await trx('slots').where({ id: slotId }).forUpdate().first();
+    if (!slot) throw new NotFoundError('Slot not found');
+
+    const charger = await trx('chargers').where({ id: slot.charger_id }).first();
+    if (!charger) throw new NotFoundError('Charger not found');
+    const station = await trx('stations').where({ id: charger.station_id }).first();
+    if (!station || !station.is_active) {
+      throw new ConflictError('This station is not currently available for booking');
+    }
+    if (charger.status !== 'online') {
+      throw new ConflictError('This charger is not currently available for booking');
+    }
+    if (slot.status !== 'available') {
+      throw new ConflictError('This slot is no longer available');
+    }
+
+    const affectedRows = await trx('slots')
+      .where({ id: slotId, status: 'available' })
+      .update({ status: 'booked', updated_at: trx.fn.now() });
+
+    if (affectedRows === 0) {
+      throw new ConflictError('This slot is no longer available');
+    }
+
+    try {
+      const [booking] = await trx('bookings')
+        .insert({
+          slot_id: slotId,
+          user_id: userId,
+          charger_id: slot.charger_id,
+          station_id: charger.station_id,
+          booking_reference: generateBookingReference(),
+          price_at_booking: charger.price_per_kwh,
+          status: 'confirmed',
+        })
+        .returning('*');
+      return await detailedBookings(trx).where('b.id', booking.id).first();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new ConflictError('This slot is no longer available');
+      }
+      throw err;
+    }
+  });
+}
+
+async function cancelBooking(bookingId, userId) {
+  return db.transaction(async (trx) => {
+    const booking = await trx('bookings').where({ id: bookingId }).first();
+    if (!booking) throw new NotFoundError('Booking not found');
+    if (booking.user_id !== userId) throw new ForbiddenError('You do not own this booking');
+    if (booking.status === 'cancelled') return booking;
+
+    const [updated] = await trx('bookings')
+      .where({ id: bookingId })
+      .update({ status: 'cancelled', updated_at: trx.fn.now() })
+      .returning('*');
+
+    await trx('slots').where({ id: booking.slot_id }).update({ status: 'available', updated_at: trx.fn.now() });
+
+    return updated;
+  });
+}
+
+async function getBookingById(bookingId, requester) {
+  const booking = await detailedBookings().where('b.id', bookingId).first();
+  if (!booking) throw new NotFoundError('Booking not found');
+
+  if (booking.user_id === requester.id) return booking;
+
+  if (requester.role === 'operator') {
+    const station = await db('stations').where({ id: booking.station_id }).first();
+    if (station && station.owner_id === requester.id) return booking;
+  }
+
+  throw new ForbiddenError('You do not have access to this booking');
+}
+
+async function listMyBookings(userId) {
+  return detailedBookings().where('b.user_id', userId).orderBy('b.created_at', 'desc').orderBy('b.id', 'desc');
+}
+
+async function listOperatorBookings(ownerId, filters = {}) {
+  let query = detailedBookings()
+    .innerJoin('users as u', 'u.id', 'b.user_id')
+    .select('u.name as driver_name', 'u.email as driver_email')
+    .where('s.owner_id', ownerId);
+
+  if (filters.stationId) query = query.andWhere('b.station_id', filters.stationId);
+  if (filters.chargerId) query = query.andWhere('b.charger_id', filters.chargerId);
+  if (filters.status) query = query.andWhere('b.status', filters.status);
+
+  return query.orderBy('b.created_at', 'desc').orderBy('b.id', 'desc');
+}
+
+module.exports = {
+  createBooking,
+  cancelBooking,
+  getBookingById,
+  listMyBookings,
+  listOperatorBookings,
+  detailedBookings,
+};

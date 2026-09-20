@@ -1,0 +1,28 @@
+# Render Blueprint for the API. The client is deployed separately on Vercel.
+services:
+  - type: web
+    name: echargefind-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_TIMEZONE
+        value: Africa/Lagos
+      # Keeps 7 days of bookable slots available, so the demo never runs dry.
+      - key: AUTO_TOP_UP_SLOTS_DAYS
+        value: "7"
+      - key: JWT_SECRET
+        generateValue: true
+      # Neon connection string (set in the Render dashboard).
+      - key: DATABASE_URL
+        sync: false
+      # The Vercel URL, e.g. https://echargefind.vercel.app (set after the client is deployed).
+      - key: CORS_ORIGIN
+        sync: false
