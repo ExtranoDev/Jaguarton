@@ -7,7 +7,7 @@ import { homeFor } from '../utils/roles.js';
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: 'driver@example.com', password: 'password123' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -71,10 +71,6 @@ export default function LoginPage() {
         >
           {submitting ? 'Logging in…' : 'Log in →'}
         </button>
-
-        <p className="text-center text-xs text-ink-2">
-          Demo accounts — driver@example.com / operator@example.com, password: password123
-        </p>
       </form>
     </AuthLayout>
   );
