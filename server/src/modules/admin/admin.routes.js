@@ -4,6 +4,7 @@ const controller = require('./admin.controller');
 const { validate } = require('../../middleware/validate.middleware');
 const { requireAuth } = require('../../middleware/auth.middleware');
 const { requireRole } = require('../../middleware/role.middleware');
+const { MIN_PASSWORD_LENGTH } = require('../../utils/password');
 
 const router = Router();
 
@@ -26,6 +27,31 @@ router.get(
   ],
   validate,
   controller.listUsers
+);
+const ROLES = ['driver', 'operator', 'admin'];
+const nameBody = body('name')
+  .isString()
+  .trim()
+  .notEmpty()
+  .withMessage('name is required')
+  .isLength({ max: 100 })
+  .withMessage('name is too long');
+const emailBody = body('email').isString().trim().isEmail().withMessage('a valid email is required');
+const roleBody = body('role').isIn(ROLES).withMessage('role must be driver, operator or admin');
+const passwordMessage = `password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+
+router.post(
+  '/admin/users',
+  [nameBody, emailBody, roleBody, body('password').isString().isLength({ min: MIN_PASSWORD_LENGTH }).withMessage(passwordMessage)],
+  validate,
+  controller.createUser
+);
+router.put('/admin/users/:id', [idParam, nameBody, emailBody, roleBody], validate, controller.updateUser);
+router.post(
+  '/admin/users/:id/reset-password',
+  [idParam, body('password').optional().isString().isLength({ min: MIN_PASSWORD_LENGTH }).withMessage(passwordMessage)],
+  validate,
+  controller.resetUserPassword
 );
 router.patch('/admin/users/:id', [idParam, isActiveBody], validate, controller.setUserActive);
 

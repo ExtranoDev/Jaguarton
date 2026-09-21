@@ -18,7 +18,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-[720px] flex-col gap-5">
+    <form onSubmit={handleSubmit} className="flex min-w-0 flex-grow flex-col gap-5">
       <div>
         <h2 className="font-display text-xl font-semibold text-ink">Add a station</h2>
         <p className="mt-1 text-[13px] text-ink-2">
@@ -32,7 +32,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
         </p>
       )}
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex max-w-[720px] flex-col gap-1.5">
         <label htmlFor="station-name" className="text-[13px] font-semibold text-ink-2">
           Station name
         </label>
@@ -46,7 +46,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex max-w-[720px] flex-col gap-1.5">
         <label htmlFor="station-address" className="text-[13px] font-semibold text-ink-2">
           Address
         </label>
@@ -61,15 +61,21 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-[13px] font-semibold text-ink-2">Location — click the map to place the pin</span>
+        <span className="text-[13px] font-semibold text-ink-2">Location</span>
         <LocationPicker
           lat={lat}
           lng={lng}
-          onPick={(point) =>
-            setForm({ ...form, lat: String(round6(point.lat)), lng: String(round6(point.lng)) })
+          onPick={(point, label) =>
+            setForm((current) => ({
+              ...current,
+              lat: String(round6(point.lat)),
+              lng: String(round6(point.lng)),
+              // A search result's name is a good first draft of the address; never overwrite one already typed.
+              address: current.address.trim() === '' && label ? label : current.address,
+            }))
           }
         />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid max-w-[720px] grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="station-lat" className="text-xs text-ink-2">
               Latitude

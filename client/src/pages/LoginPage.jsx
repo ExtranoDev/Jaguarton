@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { homeFor } from '../utils/roles.js';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, notice } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -19,7 +19,12 @@ export default function LoginPage() {
       const user = await login(form);
       navigate(homeFor(user));
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid email or password.');
+      // No response at all means the server couldn't be reached: not a wrong password.
+      setError(
+        err.response
+          ? err.response.data?.error || 'Invalid email or password.'
+          : "We can't reach the server right now. It may be waking up; wait a moment and try again."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -33,7 +38,16 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-ink-2">Log in to find and book a charging slot.</p>
         </div>
 
-        {error && <p className="rounded-lg bg-terracotta-tint px-3 py-2 text-sm text-terracotta">{error}</p>}
+        {notice && !error && (
+          <p role="status" className="rounded-lg bg-sage-tint px-3 py-2 text-sm text-ink">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="rounded-lg bg-terracotta-tint px-3 py-2 text-sm text-terracotta">
+            {error}
+          </p>
+        )}
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">

@@ -9,6 +9,7 @@ import { getSlots } from '../api/slots.js';
 import { createBooking } from '../api/bookings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { CONNECTOR_LABELS, nextDays, toLocalDateString } from '../utils/format.js';
+import { directionsUrl } from '../utils/maps.js';
 
 const DAYS_SHOWN = 3;
 
@@ -136,11 +137,19 @@ export default function StationDetailPage() {
               <div className="flex flex-col gap-2">
                 <h1 className="font-display text-[32px] font-bold text-ink">{station.name}</h1>
                 <p className="text-[15px] text-ink-2">{station.address}</p>
-                <div className="mt-1 flex gap-2">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-sage-tint px-2.5 py-1 text-xs text-ink-2">
                     {station.chargers.filter((c) => c.status === 'online').length} of{' '}
                     {station.chargers.length} chargers online
                   </span>
+                  <a
+                    href={directionsUrl(station.lat, station.lng)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full border border-green px-3 py-1 text-xs font-semibold text-green-dark hover:bg-green-tint"
+                  >
+                    Get directions ↗
+                  </a>
                 </div>
               </div>
               <div className="hidden h-[100px] w-40 flex-shrink-0 items-center justify-center rounded-2xl bg-sage-tint sm:flex">

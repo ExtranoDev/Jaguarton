@@ -14,14 +14,16 @@ function requireValidDate(dateStr) {
   }
 }
 
-async function getSlotsForCharger(chargerId, dateStr) {
+async function getSlotsForCharger(chargerId, dateStr, viewer = null) {
   const charger = await db('chargers').where({ id: chargerId }).first();
   if (!charger) throw new NotFoundError('Charger not found');
+  const station = await db('stations').where({ id: charger.station_id }).first();
+  // An operator can only look at slots on their own chargers.
+  if (viewer?.role === 'operator' && station?.owner_id !== viewer.id) throw new NotFoundError('Charger not found');
 
   // An offline/unavailable charger, or one at a deactivated station, has no
   // bookable slots, regardless of what individual slot rows say.
   if (charger.status !== 'online') return [];
-  const station = await db('stations').where({ id: charger.station_id }).first();
   if (!station || !station.is_active) return [];
 
   let query = db('slots').where({ charger_id: chargerId });

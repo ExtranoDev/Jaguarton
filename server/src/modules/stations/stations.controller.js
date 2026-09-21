@@ -17,12 +17,12 @@ const list = asyncHandler(async (req, res) => {
     status: req.query.status || undefined,
     connectorType: req.query.connectorType || undefined,
   };
-  const stations = await stationsService.listStations(filters);
+  const stations = await stationsService.listStations(filters, req.user);
   res.status(200).json({ stations });
 });
 
 const detail = asyncHandler(async (req, res) => {
-  const station = await stationsService.getStationDetail(Number(req.params.id));
+  const station = await stationsService.getStationDetail(Number(req.params.id), req.user);
   res.status(200).json({ station });
 });
 

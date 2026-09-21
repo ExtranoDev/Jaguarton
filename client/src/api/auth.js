@@ -14,3 +14,13 @@ export async function fetchMe() {
   const { data } = await client.get('/auth/me');
   return data.user;
 }
+
+export async function updateProfile({ name }) {
+  const { data } = await client.patch('/auth/me', { name });
+  return data.user;
+}
+
+export async function changePassword({ currentPassword, newPassword }) {
+  const { data } = await client.post('/auth/change-password', { currentPassword, newPassword });
+  return data;
+}

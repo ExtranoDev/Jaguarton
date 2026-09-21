@@ -50,7 +50,7 @@ export default function Navbar({ active }) {
 
       {user && (
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <Link to="/account" aria-label="Account settings" title="Account settings" className="flex items-center gap-2 rounded-lg hover:opacity-80">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-tint text-xs font-bold text-ink-2"
               title={user.name}
@@ -63,7 +63,7 @@ export default function Navbar({ active }) {
                 {ROLE_LABELS[user.role] || 'Driver'}
               </span>
             </div>
-          </div>
+          </Link>
           <button
             type="button"
             aria-label="Log out"

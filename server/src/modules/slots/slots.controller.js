@@ -2,7 +2,7 @@ const slotsService = require('./slots.service');
 const asyncHandler = require('../../utils/asyncHandler');
 
 const listForCharger = asyncHandler(async (req, res) => {
-  const slots = await slotsService.getSlotsForCharger(Number(req.params.id), req.query.date);
+  const slots = await slotsService.getSlotsForCharger(Number(req.params.id), req.query.date, req.user);
   res.status(200).json({ slots });
 });
 

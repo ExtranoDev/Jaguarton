@@ -12,6 +12,25 @@ const listUsers = asyncHandler(async (req, res) => {
   res.status(200).json({ users });
 });
 
+const createUser = asyncHandler(async (req, res) => {
+  const { name, email, role, password } = req.body;
+  const user = await adminService.createUser(req.user.id, { name, email, role, password });
+  res.status(201).json({ user });
+});
+
+const updateUser = asyncHandler(async (req, res) => {
+  const { name, email, role } = req.body;
+  const user = await adminService.updateUser(req.user.id, Number(req.params.id), { name, email, role });
+  res.status(200).json({ user });
+});
+
+const resetUserPassword = asyncHandler(async (req, res) => {
+  const { user, temporaryPassword } = await adminService.resetUserPassword(req.user.id, Number(req.params.id), {
+    password: req.body.password,
+  });
+  res.status(200).json({ user, temporaryPassword });
+});
+
 const setUserActive = asyncHandler(async (req, res) => {
   const user = await adminService.setUserActive(req.user.id, Number(req.params.id), req.body.isActive);
   res.status(200).json({ user });
@@ -64,6 +83,9 @@ const auditLog = asyncHandler(async (req, res) => {
 module.exports = {
   overview,
   listUsers,
+  createUser,
+  updateUser,
+  resetUserPassword,
   setUserActive,
   listStations,
   setStationActive,

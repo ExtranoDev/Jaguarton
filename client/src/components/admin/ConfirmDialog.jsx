@@ -1,13 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-// Modal confirmation for destructive admin actions. Pass `reasonLabel` to also require a
-// written reason before the confirm button enables (used for cancelling bookings).
-// Cancel is the initially focused control, so Enter can't confirm by accident.
+// Modal for admin actions. By default it is a destructive confirmation: Cancel is focused first,
+// so Enter can't confirm by accident. Options:
+//   reasonLabel     also require a written reason before Confirm enables (cancelling bookings)
+//   tone="primary"  a green confirm button, for forms rather than destructive actions
+//   initialFocus    "field" focuses the first input in `children` instead of Cancel
+//   confirmDisabled keeps Confirm disabled until the form in `children` is valid
+//   hideCancel      a single-button notice (Escape still closes it through onCancel)
 export default function ConfirmDialog({
   title,
   children,
   confirmLabel,
   reasonLabel,
+  tone = 'danger',
+  initialFocus: initialFocusTarget = 'cancel',
+  confirmDisabled = false,
+  hideCancel = false,
   busy = false,
   error = '',
   onConfirm,
@@ -19,12 +27,16 @@ export default function ConfirmDialog({
   const formRef = useRef(null);
   const initialFocus = useRef(null);
   const needsReason = Boolean(reasonLabel);
-  const canConfirm = !busy && (!needsReason || reason.trim().length > 0);
+  const canConfirm = !busy && !confirmDisabled && (!needsReason || reason.trim().length > 0);
 
   useEffect(() => {
     const opener = document.activeElement;
-    initialFocus.current?.focus();
+    const firstField = formRef.current.querySelector('input, select, textarea');
+    const target = initialFocusTarget === 'field' ? firstField : initialFocus.current;
+    (target || formRef.current.querySelector('button'))?.focus();
     return () => opener?.focus?.();
+    // Only on open: later re-renders must not steal focus back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -38,7 +50,9 @@ export default function ConfirmDialog({
   // Keep Tab inside the dialog while it is open.
   function trapFocus(e) {
     if (e.key !== 'Tab') return;
-    const focusable = formRef.current.querySelectorAll('textarea, button:not(:disabled)');
+    const focusable = formRef.current.querySelectorAll(
+      'input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)'
+    );
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     if (e.shiftKey && document.activeElement === first) {
@@ -100,19 +114,23 @@ export default function ConfirmDialog({
         )}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            ref={needsReason ? undefined : initialFocus}
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-lg border border-border px-4 py-2.5 text-[13px] font-semibold text-ink-2 hover:border-ink-2 disabled:opacity-60"
-          >
-            Go back
-          </button>
+          {!hideCancel && (
+            <button
+              type="button"
+              ref={needsReason ? undefined : initialFocus}
+              onClick={onCancel}
+              disabled={busy}
+              className="rounded-lg border border-border px-4 py-2.5 text-[13px] font-semibold text-ink-2 hover:border-ink-2 disabled:opacity-60"
+            >
+              Go back
+            </button>
+          )}
           <button
             type="submit"
             disabled={!canConfirm}
-            className="rounded-lg bg-terracotta px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
+            className={`rounded-lg px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50 ${
+              tone === 'primary' ? 'bg-green' : 'bg-terracotta'
+            }`}
           >
             {busy ? 'Working…' : confirmLabel}
           </button>

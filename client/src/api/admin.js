@@ -57,3 +57,19 @@ export async function listAuditLog() {
   const { data } = await client.get('/admin/audit-log');
   return data.actions;
 }
+
+export async function createUser({ name, email, role, password }) {
+  const { data } = await client.post('/admin/users', { name, email, role, password });
+  return data.user;
+}
+
+export async function updateUser(id, { name, email, role }) {
+  const { data } = await client.put(`/admin/users/${id}`, { name, email, role });
+  return data.user;
+}
+
+// Omit `password` to have the server generate a temporary one (returned once as temporaryPassword).
+export async function resetUserPassword(id, password) {
+  const { data } = await client.post(`/admin/users/${id}/reset-password`, password ? { password } : {});
+  return data;
+}

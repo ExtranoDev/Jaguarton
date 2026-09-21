@@ -119,14 +119,16 @@ describe('admin users', () => {
     expect(within(rowFor('Chidi Nwosu')).getByText('Active')).toBeInTheDocument();
   });
 
-  it("offers no suspend button on the admin's own row", async () => {
+  it("offers no suspend or password reset on the admin's own row", async () => {
     mockAdminApi();
     renderAdmin('users');
 
     await screen.findByText('Chidi Nwosu');
     // The navbar shows the admin's name too, so look inside the table.
     const ownRow = within(screen.getByRole('table', { name: 'Users' })).getByText(admin.name).closest('tr');
-    expect(within(ownRow).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(ownRow).queryByRole('button', { name: /suspend/i })).not.toBeInTheDocument();
+    expect(within(ownRow).queryByRole('button', { name: /reset password/i })).not.toBeInTheDocument();
+    expect(within(ownRow).getByRole('button', { name: `Edit ${admin.name}` })).toBeInTheDocument();
     expect(within(ownRow).getByText('This is you')).toBeInTheDocument();
   });
 

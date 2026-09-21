@@ -15,8 +15,10 @@ async function attachChargers(stations) {
 
 // Deactivated stations (an admin action) are hidden from drivers everywhere; operators
 // still get them from listOperatorStations.
-async function listStations(filters = {}) {
+// `viewer` is the signed-in user, if any. An operator only ever sees their own stations.
+async function listStations(filters = {}, viewer = null) {
   let idsQuery = db('stations as s').distinct('s.id').where('s.is_active', true);
+  if (viewer?.role === 'operator') idsQuery = idsQuery.where('s.owner_id', viewer.id);
 
   const needsChargerJoin =
     filters.status || filters.connectorType || filters.minPrice != null || filters.maxPrice != null;
@@ -52,9 +54,15 @@ async function listStations(filters = {}) {
   return result;
 }
 
-async function getStationDetail(id) {
+// Another operator's station is a 404 (not a 403), so its existence isn't revealed. An owner can
+// still open their own station after an admin has deactivated it.
+async function getStationDetail(id, viewer = null) {
   const station = await db('stations').where({ id }).first();
-  if (!station || !station.is_active) throw new NotFoundError('Station not found');
+  const isOperator = viewer?.role === 'operator';
+  const isOwner = isOperator && station?.owner_id === viewer.id;
+  if (!station || (isOperator && !isOwner) || (!station.is_active && !isOwner)) {
+    throw new NotFoundError('Station not found');
+  }
 
   const chargers = await db('chargers').where({ station_id: id }).orderBy('id');
   const chargerIds = chargers.map((c) => c.id);
@@ -75,7 +83,7 @@ async function getStationDetail(id) {
 
   return {
     ...station,
-    is_active: true,
+    is_active: Boolean(station.is_active),
     chargers: chargers.map((charger) => ({
       ...charger,
       availableSlotCount: countByCharger[charger.id] || 0,

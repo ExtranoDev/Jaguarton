@@ -18,4 +18,17 @@ const me = asyncHandler(async (req, res) => {
   res.status(200).json({ user });
 });
 
-module.exports = { signup, login, me };
+const updateMe = asyncHandler(async (req, res) => {
+  const user = await authService.updateProfile(req.user.id, { name: req.body.name });
+  res.status(200).json({ user });
+});
+
+const changePassword = asyncHandler(async (req, res) => {
+  await authService.changePassword(req.user.id, {
+    currentPassword: req.body.currentPassword,
+    newPassword: req.body.newPassword,
+  });
+  res.status(200).json({ message: 'Password updated' });
+});
+
+module.exports = { signup, login, me, updateMe, changePassword };

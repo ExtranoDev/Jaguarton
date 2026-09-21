@@ -7,6 +7,9 @@ import useAdminData from './useAdminData.js';
 const ACTION_LABELS = {
   'user.suspend': 'Suspended user',
   'user.reactivate': 'Reactivated user',
+  'user.create': 'Created user',
+  'user.update': 'Edited user',
+  'user.reset_password': 'Reset password',
   'station.deactivate': 'Deactivated station',
   'station.activate': 'Reactivated station',
   'charger.set_online': 'Set charger online',

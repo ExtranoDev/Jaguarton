@@ -7,6 +7,8 @@ const {
   addDaysToDateString,
   toIsoString,
 } = require('../../utils/time');
+const { isUniqueViolation } = require('../../utils/dbErrors');
+const { hashPassword, generateTemporaryPassword } = require('../../utils/password');
 const { detailedBookings } = require('../bookings/bookings.service');
 const { topUpSlots } = require('../slots/slots.service');
 const { buildSlotRows } = require('../slots/slotRows');
@@ -150,6 +152,106 @@ async function listUsers({ role, q } = {}) {
   return users.map(toAdminUser);
 }
 
+// Lock every active admin row so two admins removing each other at the same time are
+// serialised: the second one then sees only itself left and is refused.
+async function assertAnotherActiveAdmin(trx, targetId, message) {
+  const activeAdmins = await trx('users')
+    .where({ role: 'admin', is_active: true })
+    .orderBy('id')
+    .forUpdate()
+    .select('id');
+  if (!activeAdmins.some((admin) => admin.id !== targetId)) throw new ConflictError(message);
+}
+
+async function createUser(adminId, { name, email, role, password }) {
+  const passwordHash = await hashPassword(password); // slow by design, so not inside the transaction
+  return db.transaction(async (trx) => {
+    if (await trx('users').where({ email }).first()) {
+      throw new ConflictError('An account with this email already exists');
+    }
+    try {
+      const [user] = await trx('users').insert({ name, email, role, password_hash: passwordHash }).returning('*');
+      await recordAction(trx, adminId, 'user.create', `user:${user.id}`, `Created as ${role}`);
+      return toAdminUser(user);
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictError('An account with this email already exists');
+      throw err;
+    }
+  });
+}
+
+async function updateUser(adminId, userId, { name, email, role }) {
+  return db.transaction(async (trx) => {
+    const target = await trx('users').where({ id: userId }).first();
+    if (!target) throw new NotFoundError('User not found');
+
+    const changes = {};
+    if (name !== target.name) changes.name = name;
+    if (email !== target.email) changes.email = email;
+    if (role !== target.role) changes.role = role;
+    if (Object.keys(changes).length === 0) return toAdminUser(target);
+
+    if (changes.email && (await trx('users').where({ email }).whereNot({ id: userId }).first())) {
+      throw new ConflictError('An account with this email already exists');
+    }
+
+    if (changes.role) {
+      if (target.id === adminId) throw new BadRequestError('You cannot change your own role');
+      // Changing role must not strand data the old role owns: operator routes need an
+      // operator, and a driver's bookings are shown to (and cancelled by) a driver.
+      if (target.role === 'operator' && (await trx('stations').where({ owner_id: userId }).first())) {
+        throw new ConflictError('This operator owns stations, so their role cannot be changed. Suspend the account instead');
+      }
+      if (target.role === 'driver' && (await trx('bookings').where({ user_id: userId }).first())) {
+        throw new ConflictError('This driver has bookings, so their role cannot be changed. Suspend the account instead');
+      }
+      if (target.role === 'admin' && target.is_active) {
+        await assertAnotherActiveAdmin(trx, target.id, 'Cannot change the role of the last active admin');
+      }
+    }
+
+    try {
+      const [updated] = await trx('users')
+        .where({ id: userId })
+        .update({ ...changes, updated_at: trx.fn.now() })
+        .returning('*');
+      const summary = Object.keys(changes)
+        .map((field) => (field === 'role' ? `role ${target.role} → ${role}` : `${field} changed`))
+        .join('; ');
+      await recordAction(trx, adminId, 'user.update', `user:${userId}`, summary);
+      return toAdminUser(updated);
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictError('An account with this email already exists');
+      throw err;
+    }
+  });
+}
+
+// Sets a new password, either the one the admin typed or a generated temporary one. The
+// temporary password is returned once and never stored in readable form; the audit log records
+// only that a reset happened. (Sessions the user already has stay valid until they expire.)
+async function resetUserPassword(adminId, userId, { password } = {}) {
+  if (userId === adminId) {
+    throw new BadRequestError('Use your account settings to change your own password');
+  }
+  const temporaryPassword = password ? undefined : generateTemporaryPassword();
+  const passwordHash = await hashPassword(password || temporaryPassword);
+
+  return db.transaction(async (trx) => {
+    const target = await trx('users').where({ id: userId }).first();
+    if (!target) throw new NotFoundError('User not found');
+    await trx('users').where({ id: userId }).update({ password_hash: passwordHash, updated_at: trx.fn.now() });
+    await recordAction(
+      trx,
+      adminId,
+      'user.reset_password',
+      `user:${userId}`,
+      temporaryPassword ? 'Temporary password generated' : 'Password set by an admin'
+    );
+    return { user: toAdminUser(target), temporaryPassword };
+  });
+}
+
 async function setUserActive(adminId, userId, isActive) {
   return db.transaction(async (trx) => {
     const target = await trx('users').where({ id: userId }).first();
@@ -160,16 +262,7 @@ async function setUserActive(adminId, userId, isActive) {
     if (Boolean(target.is_active) === isActive) return toAdminUser(target);
 
     if (!isActive && target.role === 'admin') {
-      // Lock every active admin row so two admins suspending each other at the same time
-      // are serialised: the second one then sees only itself left and is refused.
-      const activeAdmins = await trx('users')
-        .where({ role: 'admin', is_active: true })
-        .orderBy('id')
-        .forUpdate()
-        .select('id');
-      if (!activeAdmins.some((admin) => admin.id !== target.id)) {
-        throw new ConflictError('Cannot suspend the last active admin');
-      }
+      await assertAnotherActiveAdmin(trx, target.id, 'Cannot suspend the last active admin');
     }
 
     const [updated] = await trx('users')
@@ -418,6 +511,9 @@ async function listAuditLog({ limit = 100 } = {}) {
 module.exports = {
   getOverview,
   listUsers,
+  createUser,
+  updateUser,
+  resetUserPassword,
   setUserActive,
   listStations,
   setStationActive,

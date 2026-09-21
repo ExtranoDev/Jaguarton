@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const controller = require('./auth.controller');
 const { validate } = require('../../middleware/validate.middleware');
 const { requireAuth } = require('../../middleware/auth.middleware');
+const { MIN_PASSWORD_LENGTH } = require('../../utils/password');
 
 const router = Router();
 
@@ -29,5 +30,27 @@ router.post(
 );
 
 router.get('/auth/me', requireAuth, controller.me);
+
+router.patch(
+  '/auth/me',
+  requireAuth,
+  [body('name').isString().trim().notEmpty().withMessage('Name is required').isLength({ max: 100 }).withMessage('Name is too long')],
+  validate,
+  controller.updateMe
+);
+
+router.post(
+  '/auth/change-password',
+  requireAuth,
+  [
+    body('currentPassword').isString().notEmpty().withMessage('Current password is required'),
+    body('newPassword')
+      .isString()
+      .isLength({ min: MIN_PASSWORD_LENGTH })
+      .withMessage(`New password must be at least ${MIN_PASSWORD_LENGTH} characters`),
+  ],
+  validate,
+  controller.changePassword
+);
 
 module.exports = router;

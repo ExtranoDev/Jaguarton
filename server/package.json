@@ -11,6 +11,7 @@
     "migrate:rollback": "knex --knexfile src/db/knexfile.js migrate:rollback",
     "seed": "knex --knexfile src/db/knexfile.js seed:run",
     "seed:admin": "knex --knexfile src/db/knexfile.js seed:run --specific=06_admin_user.js",
+    "seed:regions": "knex --knexfile src/db/knexfile.js seed:run --specific=07_stations_ogun_oyo.js",
     "slots:topup": "node src/scripts/topUpSlots.js",
     "test": "cross-env NODE_ENV=test jest --runInBand"
   },

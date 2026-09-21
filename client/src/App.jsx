@@ -7,11 +7,15 @@ import MyBookingsPage from './pages/MyBookingsPage.jsx';
 import BookingConfirmationPage from './pages/BookingConfirmationPage.jsx';
 import OperatorDashboardPage from './pages/OperatorDashboardPage.jsx';
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx';
+import AccountPage from './pages/AccountPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
+import ServerStatusBanner from './components/ServerStatusBanner.jsx';
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <ServerStatusBanner />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
 
@@ -57,6 +61,14 @@ export default function App() {
       />
 
       <Route
+        path="/account"
+        element={
+          <ProtectedRoute>
+            <AccountPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin"
         element={
           <ProtectedRoute role="admin">
@@ -66,6 +78,7 @@ export default function App() {
       />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }

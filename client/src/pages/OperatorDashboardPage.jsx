@@ -62,7 +62,7 @@ export default function OperatorDashboardPage() {
       <Navbar active="primary" />
 
       <div className="flex-grow overflow-y-auto">
-        <div className="flex items-start justify-between gap-4 px-8 pt-6">
+        <div className="flex items-start justify-between gap-4 px-4 sm:px-8 pt-6">
           <div className="flex flex-col gap-1">
             <h1 className="font-display text-[26px] font-bold text-ink">My Stations</h1>
             <p className="text-[13px] text-ink-2">
@@ -82,11 +82,11 @@ export default function OperatorDashboardPage() {
           </button>
         </div>
 
-        {error && <p role="alert" className="px-8 pt-4 text-sm text-terracotta">{error}</p>}
-        {loading && <p className="px-8 pt-6 text-sm text-ink-2">Loading…</p>}
+        {error && <p role="alert" className="px-4 sm:px-8 pt-4 text-sm text-terracotta">{error}</p>}
+        {loading && <p className="px-4 sm:px-8 pt-6 text-sm text-ink-2">Loading…</p>}
 
         {!loading && !error && (
-          <div className="flex flex-col gap-6 px-8 pb-10 pt-5 lg:flex-row">
+          <div className="flex flex-col gap-6 px-4 sm:px-8 pb-10 pt-5 lg:flex-row">
             <nav aria-label="Your stations" className="flex flex-col gap-2.5 lg:w-[320px] lg:flex-shrink-0">
               {stations.length === 0 && (
                 <p className="rounded-xl bg-sage-tint p-4 text-sm text-ink-2">
@@ -131,12 +131,16 @@ export default function OperatorDashboardPage() {
             </nav>
 
             {addingStation ? (
-              <AddStationForm
-                submitting={creating}
-                error={createError}
-                onSubmit={handleCreateStation}
-                onCancel={() => setAddingStation(false)}
-              />
+              // On phones the list of stations stacks above this; the form goes first so an
+              // operator with many stations doesn't have to scroll past them all to reach it.
+              <div className="order-first flex min-w-0 flex-grow lg:order-none">
+                <AddStationForm
+                  submitting={creating}
+                  error={createError}
+                  onSubmit={handleCreateStation}
+                  onCancel={() => setAddingStation(false)}
+                />
+              </div>
             ) : (
               selected && <StationPanel key={selected.id} station={selected} onChanged={reload} />
             )}

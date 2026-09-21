@@ -2,13 +2,14 @@ const { Router } = require('express');
 const { body, query } = require('express-validator');
 const controller = require('./slots.controller');
 const { validate } = require('../../middleware/validate.middleware');
-const { requireAuth } = require('../../middleware/auth.middleware');
+const { requireAuth, optionalAuth } = require('../../middleware/auth.middleware');
 const { requireRole } = require('../../middleware/role.middleware');
 
 const router = Router();
 
 router.get(
   '/chargers/:id/slots',
+  optionalAuth,
   [query('date').optional().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('date must be YYYY-MM-DD')],
   validate,
   controller.listForCharger
