@@ -37,16 +37,16 @@ export default function AuthLayout({ mode, children }) {
             Find, check, and book EV charging in seconds.
           </h1>
           <p className="text-base leading-relaxed text-[#CFE9DC]">
-            Live availability, transparent pricing, and instant confirmations across Lagos charging
-            stations.
+            Live availability, transparent pricing, and instant confirmations across Lagos, Ogun
+            and Oyo charging stations.
           </p>
           <div className="mt-3 flex gap-10">
             <div className="flex flex-col gap-1">
-              <span className="font-display text-3xl font-bold text-volt">13</span>
+              <span className="font-display text-3xl font-bold text-volt">33</span>
               <span className="text-[13px] text-[#CFE9DC]">Stations</span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="font-display text-3xl font-bold text-volt">32</span>
+              <span className="font-display text-3xl font-bold text-volt">82</span>
               <span className="text-[13px] text-[#CFE9DC]">Chargers</span>
             </div>
             <div className="flex flex-col gap-1">
