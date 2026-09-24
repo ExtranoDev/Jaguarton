@@ -176,11 +176,14 @@ describe('resetting a password', () => {
     await screen.findByText('Chidi Nwosu');
 
     await user.click(screen.getByRole('button', { name: 'Reset password for Chidi Nwosu' }));
-    await user.click(within(dialog('Reset password for Chidi Nwosu?')).getByRole('button', { name: 'Reset password' }));
+    const form = dialog('Reset password for Chidi Nwosu?');
+    expect(within(form).getByRole('button', { name: 'Reset password' })).toBeDisabled(); // needs a reason
+    await user.type(within(form).getByLabelText('Reason for the reset'), 'Locked out, called support');
+    await user.click(within(form).getByRole('button', { name: 'Reset password' }));
 
     const secret = await screen.findByRole('dialog', { name: 'Temporary password for Chidi Nwosu' });
     expect(within(secret).getByLabelText('Temporary password')).toHaveValue('Tmp9Xk2mQz4R');
-    expect(state.requests.reset).toEqual({ id: 2, body: {} });
+    expect(state.requests.reset).toEqual({ id: 2, body: { reason: 'Locked out, called support' } });
 
     await user.click(within(secret).getByRole('button', { name: 'Copy' }));
     expect(await within(secret).findByRole('button', { name: 'Copied' })).toBeInTheDocument();
@@ -205,10 +208,11 @@ describe('resetting a password', () => {
     expect(confirm).toBeDisabled(); // typed, but too short
     await user.clear(within(form).getByLabelText('New password (optional)'));
     await user.type(within(form).getByLabelText('New password (optional)'), 'chosen-by-admin');
+    await user.type(within(form).getByLabelText('Reason for the reset'), 'Asked by their manager');
     await user.click(confirm);
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Password updated for Chidi Nwosu.'));
-    expect(state.requests.reset).toEqual({ id: 2, body: { password: 'chosen-by-admin' } });
+    expect(state.requests.reset).toEqual({ id: 2, body: { password: 'chosen-by-admin', reason: 'Asked by their manager' } });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('chosen-by-admin')).not.toBeInTheDocument();
   });

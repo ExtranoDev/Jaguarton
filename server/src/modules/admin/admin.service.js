@@ -9,7 +9,8 @@ const {
 } = require('../../utils/time');
 const { isUniqueViolation } = require('../../utils/dbErrors');
 const { hashPassword, generateTemporaryPassword } = require('../../utils/password');
-const { detailedBookings } = require('../bookings/bookings.service');
+const { detailedBookings, cancelConfirmed } = require('../bookings/bookings.service');
+const audit = require('../audit/audit.service');
 const { normalizeEmail } = require('../auth/auth.service');
 const { topUpSlots } = require('../slots/slots.service');
 const { buildSlotRows } = require('../slots/slotRows');
@@ -17,18 +18,8 @@ const { buildSlotRows } = require('../slots/slotRows');
 const LIST_LIMIT = 200;
 const UTILISATION_DAYS = 7;
 
-// Every state-changing admin action goes through here, on the same connection/transaction
-// as the change itself so an action and its audit entry succeed or fail together.
-// `target` is "<type>:<id>"; listAuditLog resolves it to a readable label.
-async function recordAction(conn, adminId, action, target, reason = null) {
-  await conn('admin_actions').insert({
-    admin_id: adminId,
-    action,
-    target,
-    reason,
-    created_at: new Date().toISOString(),
-  });
-}
+// Every state-changing admin action writes an audit entry (audit.record) on the same transaction
+// as the change itself, so an action and its entry succeed or fail together.
 
 const count = (row) => Number(row?.n || 0);
 
@@ -166,7 +157,7 @@ async function assertAnotherActiveAdmin(trx, targetId, message) {
   if (!activeAdmins.some((admin) => admin.id !== targetId)) throw new ConflictError(message);
 }
 
-async function createUser(adminId, { name, email: rawEmail, role, password }) {
+async function createUser(adminId, { name, email: rawEmail, role, password }, context = {}) {
   const email = normalizeEmail(rawEmail);
   const passwordHash = await hashPassword(password); // slow by design, so not inside the transaction
   return db.transaction(async (trx) => {
@@ -175,7 +166,12 @@ async function createUser(adminId, { name, email: rawEmail, role, password }) {
     }
     try {
       const [user] = await trx('users').insert({ name, email, role, password_hash: passwordHash }).returning('*');
-      await recordAction(trx, adminId, 'user.create', `user:${user.id}`, `Created as ${role}`);
+      await audit.record(trx, {
+        action: 'user.create',
+        context,
+        target: audit.userTarget(user),
+        changes: audit.diff({}, user, ['name', 'email', 'role']),
+      });
       return toAdminUser(user);
     } catch (err) {
       if (isUniqueViolation(err)) throw new ConflictError('An account with this email already exists');
@@ -184,7 +180,8 @@ async function createUser(adminId, { name, email: rawEmail, role, password }) {
   });
 }
 
-async function updateUser(adminId, userId, { name, email: rawEmail, role }) {
+// A role change needs a reason, and ends the user's sessions (their token says the old role).
+async function updateUser(adminId, userId, { name, email: rawEmail, role, reason }, context = {}) {
   const email = normalizeEmail(rawEmail);
   return db.transaction(async (trx) => {
     const target = await trx('users').where({ id: userId }).first();
@@ -202,6 +199,7 @@ async function updateUser(adminId, userId, { name, email: rawEmail, role }) {
 
     if (changes.role) {
       if (target.id === adminId) throw new BadRequestError('You cannot change your own role');
+      audit.requireReason(reason, "change someone's role");
       // Changing role must not strand data the old role owns: operator routes need an
       // operator, and a driver's bookings are shown to (and cancelled by) a driver.
       if (target.role === 'operator' && (await trx('stations').where({ owner_id: userId }).first())) {
@@ -221,10 +219,13 @@ async function updateUser(adminId, userId, { name, email: rawEmail, role }) {
         .where({ id: userId })
         .update({ ...changes, ...revokeSessions, updated_at: trx.fn.now() })
         .returning('*');
-      const summary = Object.keys(changes)
-        .map((field) => (field === 'role' ? `role ${target.role} → ${role}` : `${field} changed`))
-        .join('; ');
-      await recordAction(trx, adminId, 'user.update', `user:${userId}`, summary);
+      await audit.record(trx, {
+        action: 'user.update',
+        context,
+        target: audit.userTarget(updated),
+        changes: audit.diff(target, updated, ['name', 'email', 'role']),
+        reason: changes.role ? reason.trim() : null,
+      });
       return toAdminUser(updated);
     } catch (err) {
       if (isUniqueViolation(err)) throw new ConflictError('An account with this email already exists');
@@ -236,10 +237,11 @@ async function updateUser(adminId, userId, { name, email: rawEmail, role }) {
 // Sets a new password, either the one the admin typed or a generated temporary one. The
 // temporary password is returned once and never stored in readable form; the audit log records
 // only that a reset happened. Every session the user already has ends.
-async function resetUserPassword(adminId, userId, { password } = {}) {
+async function resetUserPassword(adminId, userId, { password, reason } = {}, context = {}) {
   if (userId === adminId) {
     throw new BadRequestError('Use your account settings to change your own password');
   }
+  const why = audit.requireReason(reason, "reset someone's password");
   const temporaryPassword = password ? undefined : generateTemporaryPassword();
   const passwordHash = await hashPassword(password || temporaryPassword);
 
@@ -249,18 +251,20 @@ async function resetUserPassword(adminId, userId, { password } = {}) {
     await trx('users')
       .where({ id: userId })
       .update({ password_hash: passwordHash, token_version: trx.raw('token_version + 1'), updated_at: trx.fn.now() });
-    await recordAction(
-      trx,
-      adminId,
-      'user.reset_password',
-      `user:${userId}`,
-      temporaryPassword ? 'Temporary password generated' : 'Password set by an admin'
-    );
+    await audit.record(trx, {
+      action: 'user.reset_password',
+      context,
+      target: audit.userTarget(target),
+      reason: why,
+      details: { method: temporaryPassword ? 'temporary password generated' : 'password set by an admin' },
+    });
     return { user: toAdminUser(target), temporaryPassword };
   });
 }
 
-async function setUserActive(adminId, userId, isActive) {
+// Suspending needs a reason; reactivating takes one optionally.
+async function setUserActive(adminId, userId, isActive, reason, context = {}) {
+  const why = isActive ? reason?.trim() || null : audit.requireReason(reason, 'suspend an account');
   return db.transaction(async (trx) => {
     const target = await trx('users').where({ id: userId }).first();
     if (!target) throw new NotFoundError('User not found');
@@ -277,7 +281,13 @@ async function setUserActive(adminId, userId, isActive) {
       .where({ id: userId })
       .update({ is_active: isActive, updated_at: trx.fn.now() })
       .returning('*');
-    await recordAction(trx, adminId, isActive ? 'user.reactivate' : 'user.suspend', `user:${userId}`);
+    await audit.record(trx, {
+      action: isActive ? 'user.reactivate' : 'user.suspend',
+      context,
+      target: audit.userTarget(updated),
+      reason: why,
+      changes: { is_active: { from: !isActive, to: isActive } },
+    });
     return toAdminUser(updated);
   });
 }
@@ -312,7 +322,9 @@ async function listStations() {
   }));
 }
 
-async function setStationActive(adminId, stationId, isActive) {
+// Deactivating needs a reason; reactivating takes one optionally.
+async function setStationActive(adminId, stationId, isActive, reason, context = {}) {
+  const why = isActive ? reason?.trim() || null : audit.requireReason(reason, 'deactivate a station');
   return db.transaction(async (trx) => {
     const station = await trx('stations').where({ id: stationId }).first();
     if (!station) throw new NotFoundError('Station not found');
@@ -322,12 +334,19 @@ async function setStationActive(adminId, stationId, isActive) {
       .where({ id: stationId })
       .update({ is_active: isActive, updated_at: trx.fn.now() })
       .returning('*');
-    await recordAction(trx, adminId, isActive ? 'station.activate' : 'station.deactivate', `station:${stationId}`);
+    await audit.record(trx, {
+      action: isActive ? 'station.activate' : 'station.deactivate',
+      context,
+      target: audit.stationTarget(station),
+      ...audit.atStation(station),
+      reason: why,
+      changes: { is_active: { from: !isActive, to: isActive } },
+    });
     return { ...updated, is_active: Boolean(updated.is_active) };
   });
 }
 
-async function setChargerStatus(adminId, chargerId, status) {
+async function setChargerStatus(adminId, chargerId, status, context = {}) {
   return db.transaction(async (trx) => {
     const charger = await trx('chargers').where({ id: chargerId }).first();
     if (!charger) throw new NotFoundError('Charger not found');
@@ -337,7 +356,14 @@ async function setChargerStatus(adminId, chargerId, status) {
       .where({ id: chargerId })
       .update({ status, updated_at: trx.fn.now() })
       .returning('*');
-    await recordAction(trx, adminId, `charger.set_${status}`, `charger:${chargerId}`);
+    const station = await trx('stations').where({ id: charger.station_id }).first();
+    await audit.record(trx, {
+      action: 'charger.status',
+      context,
+      target: audit.chargerTarget(charger, station),
+      ...audit.atStation(station),
+      changes: audit.diff(charger, updated, ['status']),
+    });
     return updated;
   });
 }
@@ -369,22 +395,14 @@ async function listBookings({ status, stationId, date } = {}) {
   return bookings.map(toAdminBooking);
 }
 
-async function cancelBooking(adminId, bookingId, reason) {
+async function cancelBooking(adminId, bookingId, reason, context = {}) {
+  const why = audit.requireReason(reason, 'cancel a booking');
   return db.transaction(async (trx) => {
     const booking = await trx('bookings').where({ id: bookingId }).first();
     if (!booking) throw new NotFoundError('Booking not found');
-
-    // Conditional on status so a driver cancelling at the same moment doesn't get
-    // overwritten (or produce a second audit entry for something we didn't do).
-    const cancelled = await trx('bookings')
-      .where({ id: bookingId, status: 'confirmed' })
-      .update({ status: 'cancelled', updated_at: trx.fn.now() });
-
-    if (cancelled > 0) {
-      await trx('slots').where({ id: booking.slot_id }).update({ status: 'available', updated_at: trx.fn.now() });
-      await recordAction(trx, adminId, 'booking.cancel', `booking:${bookingId}`, reason);
-    }
-
+    // Conditional on status: a driver cancelling at the same moment isn't overwritten, and
+    // there is no second audit entry for something this call didn't do.
+    await cancelConfirmed(trx, booking, { context, reason: why });
     return toAdminBooking(await adminBookings(trx).where('b.id', bookingId).first());
   });
 }
@@ -462,60 +480,21 @@ async function getSlotCoverage({ days = 7 } = {}) {
   };
 }
 
-async function topUpAllSlots(adminId, { days = 7 } = {}) {
+async function topUpAllSlots(adminId, { days = 7 } = {}, context = {}) {
   const result = await topUpSlots({ days });
-  await recordAction(db, adminId, 'slots.top_up', 'chargers:all', `Next ${days} days: ${result.created} new slots`);
+  await audit.record(db, {
+    action: 'slots.top_up',
+    context,
+    target: { type: 'chargers', name: 'All chargers' },
+    details: { days, chargers: result.chargers, created: result.created },
+  });
   return result;
 }
 
 // -------------------------------------------------------------- audit log
 
-const TARGET_LABELS = {
-  user: async (ids) =>
-    (await db('users').whereIn('id', ids).select('id', 'name', 'email')).map((r) => [r.id, `${r.name} (${r.email})`]),
-  station: async (ids) => (await db('stations').whereIn('id', ids).select('id', 'name')).map((r) => [r.id, r.name]),
-  charger: async (ids) =>
-    (
-      await db('chargers as c')
-        .innerJoin('stations as s', 's.id', 'c.station_id')
-        .whereIn('c.id', ids)
-        .select('c.id', 's.name as station_name')
-    ).map((r) => [r.id, `Charger #${r.id} · ${r.station_name}`]),
-  booking: async (ids) =>
-    (await db('bookings').whereIn('id', ids).select('id', 'booking_reference')).map((r) => [r.id, r.booking_reference]),
-};
-
-async function resolveTargetLabels(targets) {
-  const idsByType = {};
-  for (const target of new Set(targets)) {
-    const [type, rawId] = target.split(':');
-    const id = Number(rawId);
-    if (TARGET_LABELS[type] && Number.isInteger(id)) (idsByType[type] ||= []).push(id);
-  }
-
-  const labels = new Map([['chargers:all', 'All chargers']]);
-  await Promise.all(
-    Object.entries(idsByType).map(async ([type, ids]) => {
-      for (const [id, label] of await TARGET_LABELS[type](ids)) labels.set(`${type}:${id}`, label);
-    })
-  );
-  return labels;
-}
-
-async function listAuditLog({ limit = 100 } = {}) {
-  const rows = await db('admin_actions as a')
-    .innerJoin('users as u', 'u.id', 'a.admin_id')
-    .select('a.id', 'a.admin_id', 'a.action', 'a.target', 'a.reason', 'a.created_at', 'u.name as admin_name', 'u.email as admin_email')
-    .orderBy('a.created_at', 'desc')
-    .orderBy('a.id', 'desc')
-    .limit(limit);
-
-  const labels = await resolveTargetLabels(rows.map((row) => row.target));
-  return rows.map((row) => ({
-    ...row,
-    created_at: toIsoString(row.created_at),
-    target_label: labels.get(row.target) || null,
-  }));
+async function listAuditLog(filters = {}) {
+  return audit.listForAdmin(filters);
 }
 
 module.exports = {

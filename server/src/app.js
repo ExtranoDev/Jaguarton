@@ -10,6 +10,7 @@ const chargersRoutes = require('./modules/chargers/chargers.routes');
 const slotsRoutes = require('./modules/slots/slots.routes');
 const bookingsRoutes = require('./modules/bookings/bookings.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
+const auditRoutes = require('./modules/audit/audit.routes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api', chargersRoutes);
 app.use('/api', slotsRoutes);
 app.use('/api', bookingsRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', auditRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

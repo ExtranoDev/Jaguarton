@@ -1,8 +1,9 @@
 const bookingsService = require('./bookings.service');
 const asyncHandler = require('../../utils/asyncHandler');
+const { contextFrom } = require('../audit/audit.service');
 
 const create = asyncHandler(async (req, res) => {
-  const booking = await bookingsService.createBooking({ slotId: req.body.slotId, userId: req.user.id });
+  const booking = await bookingsService.createBooking({ slotId: req.body.slotId, userId: req.user.id }, contextFrom(req));
   res.status(201).json({ booking, bookingReference: booking.booking_reference });
 });
 
@@ -17,7 +18,7 @@ const detail = asyncHandler(async (req, res) => {
 });
 
 const cancel = asyncHandler(async (req, res) => {
-  const booking = await bookingsService.cancelBooking(req.params.id, req.user.id);
+  const booking = await bookingsService.cancelBooking(req.params.id, req.user.id, contextFrom(req));
   res.status(200).json({ booking });
 });
 

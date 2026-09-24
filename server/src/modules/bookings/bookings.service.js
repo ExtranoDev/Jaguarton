@@ -4,6 +4,7 @@ const { isUniqueViolation } = require('../../utils/dbErrors');
 const { generateBookingReference } = require('../../utils/bookingReference');
 const { toIsoString } = require('../../utils/time');
 const { isPubliclyVisible, ownerIsActive } = require('../stations/stations.service');
+const audit = require('../audit/audit.service');
 
 // Booking rows joined with the slot time, charger and station info that the
 // driver-facing screens need (the raw row only has foreign keys).
@@ -33,7 +34,7 @@ function detailedBookings(conn = db) {
 //      is a DB-level backstop independent of this code path.
 // The driver's own row is locked first too, so two bookings by one driver at once are checked for
 // overlap one after the other rather than both passing.
-async function createBooking({ slotId, userId }) {
+async function createBooking({ slotId, userId }, context = {}) {
   return db.transaction(async (trx) => {
     await trx('users').where({ id: userId }).forUpdate().first();
     const slot = await trx('slots').where({ id: slotId }).forUpdate().first();
@@ -88,6 +89,14 @@ async function createBooking({ slotId, userId }) {
           status: 'confirmed',
         })
         .returning('*');
+      const driver = await trx('users').where({ id: userId }).select('email').first();
+      await audit.record(trx, {
+        action: 'booking.create',
+        context,
+        target: audit.bookingTarget(booking, driver?.email),
+        ...audit.atStation(station),
+        details: { slotId, chargerId: charger.id, startTime: toIsoString(slot.start_time), price: charger.price_per_kwh },
+      });
       return await detailedBookings(trx).where('b.id', booking.id).first();
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -98,21 +107,41 @@ async function createBooking({ slotId, userId }) {
   });
 }
 
-async function cancelBooking(bookingId, userId) {
+// Cancels a confirmed booking, frees its slot and logs who did it. Conditional on the status, so
+// two people cancelling at once can't both succeed (or write two audit entries). Returns whether
+// this call did the cancelling. Shared by drivers, operators and admins.
+async function cancelConfirmed(trx, booking, { context = {}, reason = null } = {}) {
+  const cancelled = await trx('bookings')
+    .where({ id: booking.id, status: 'confirmed' })
+    .update({ status: 'cancelled', updated_at: trx.fn.now() });
+  if (cancelled === 0) return false;
+
+  await trx('slots').where({ id: booking.slot_id }).update({ status: 'available', updated_at: trx.fn.now() });
+  const [station, driver, slot] = await Promise.all([
+    trx('stations').where({ id: booking.station_id }).first(),
+    trx('users').where({ id: booking.user_id }).select('email').first(),
+    trx('slots').where({ id: booking.slot_id }).select('start_time').first(),
+  ]);
+  await audit.record(trx, {
+    action: 'booking.cancel',
+    context,
+    target: audit.bookingTarget(booking, driver?.email),
+    stationId: booking.station_id,
+    ownerId: station?.owner_id ?? null,
+    reason,
+    changes: { status: { from: 'confirmed', to: 'cancelled' } },
+    details: { startTime: toIsoString(slot?.start_time) },
+  });
+  return true;
+}
+
+async function cancelBooking(bookingId, userId, context = {}) {
   return db.transaction(async (trx) => {
     const booking = await trx('bookings').where({ id: bookingId }).first();
     if (!booking) throw new NotFoundError('Booking not found');
     if (booking.user_id !== userId) throw new ForbiddenError('You do not own this booking');
-    if (booking.status === 'cancelled') return booking;
-
-    const [updated] = await trx('bookings')
-      .where({ id: bookingId })
-      .update({ status: 'cancelled', updated_at: trx.fn.now() })
-      .returning('*');
-
-    await trx('slots').where({ id: booking.slot_id }).update({ status: 'available', updated_at: trx.fn.now() });
-
-    return updated;
+    await cancelConfirmed(trx, booking, { context });
+    return trx('bookings').where({ id: bookingId }).first();
   });
 }
 
@@ -150,6 +179,7 @@ async function listOperatorBookings(ownerId, filters = {}) {
 module.exports = {
   createBooking,
   cancelBooking,
+  cancelConfirmed,
   getBookingById,
   listMyBookings,
   listOperatorBookings,

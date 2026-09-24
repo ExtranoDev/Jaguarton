@@ -1,9 +1,10 @@
 const db = require('../../config/db');
 const { NotFoundError, ConflictError, BadRequestError } = require('../../utils/errors');
-const { dayBounds, isValidDateString, toZonedDateString, addDaysToDateString } = require('../../utils/time');
+const { dayBounds, isValidDateString, toZonedDateString, addDaysToDateString, toIsoString } = require('../../utils/time');
 const chargersService = require('../chargers/chargers.service');
 const stationsService = require('../stations/stations.service');
 const { buildSlotRows } = require('./slotRows');
+const audit = require('../audit/audit.service');
 
 // Keeps each INSERT under SQLite's bound-parameter limit (4 columns per row).
 const INSERT_CHUNK_SIZE = 200;
@@ -39,18 +40,24 @@ async function getSlotsForCharger(chargerId, dateStr, viewer = null) {
   return query.orderBy('start_time');
 }
 
-async function assertOwnsSlot(slotId, userId) {
-  const slot = await db('slots').where({ id: slotId }).first();
+async function assertOwnsSlot(slotId, userId, conn = db) {
+  const slot = await conn('slots').where({ id: slotId }).first();
   if (!slot) throw new NotFoundError('Slot not found');
-  await chargersService.assertOwnsCharger(slot.charger_id, userId);
-  return slot;
+  const { charger, station } = await chargersService.assertOwnsCharger(slot.charger_id, userId, conn);
+  return { slot, charger, station };
 }
+
+const slotTarget = (slot, charger, station) => ({
+  type: 'slot',
+  id: slot.id,
+  name: `${toIsoString(slot.start_time)} · Charger #${charger.id} · ${station.name}`,
+});
 
 // Slots can be created from today up to this many days ahead (in APP_TIMEZONE).
 const MAX_GENERATE_DAYS_AHEAD = 90;
 
-async function generateSlots(chargerId, ownerId, { date, startHour, endHour, durationMinutes }) {
-  await chargersService.assertOwnsCharger(chargerId, ownerId);
+async function generateSlots(chargerId, ownerId, { date, startHour, endHour, durationMinutes }, context = {}) {
+  const { charger, station } = await chargersService.assertOwnsCharger(chargerId, ownerId);
   requireValidDate(date);
   const today = toZonedDateString(new Date());
   const lastDay = addDaysToDateString(today, MAX_GENERATE_DAYS_AHEAD);
@@ -65,7 +72,17 @@ async function generateSlots(chargerId, ownerId, { date, startHour, endHour, dur
   );
   if (rows.length === 0) return [];
 
-  return db('slots').insert(rows).onConflict(['charger_id', 'start_time']).ignore().returning('*');
+  return db.transaction(async (trx) => {
+    const created = await trx('slots').insert(rows).onConflict(['charger_id', 'start_time']).ignore().returning('*');
+    await audit.record(trx, {
+      action: 'slots.generate',
+      context,
+      target: audit.chargerTarget(charger, station),
+      ...audit.atStation(station),
+      details: { date, startHour, endHour, durationMinutes, created: created.length },
+    });
+    return created;
+  });
 }
 
 // Makes sure every charger has slots for today and the next `days - 1` days.
@@ -112,29 +129,52 @@ async function topUpSlots({
   return { chargers: chargers.length, days, created };
 }
 
-async function topUpSlotsForOperator(ownerId, { days, stationId } = {}) {
-  if (stationId) await stationsService.assertOwnsStation(stationId, ownerId);
-  return topUpSlots({ days, ownerId, stationId });
+async function topUpSlotsForOperator(ownerId, { days, stationId } = {}, context = {}) {
+  const station = stationId ? await stationsService.assertOwnsStation(stationId, ownerId) : null;
+  const result = await topUpSlots({ days, ownerId, stationId });
+  await audit.record(db, {
+    action: 'slots.top_up',
+    context,
+    target: station ? audit.stationTarget(station) : { type: 'stations', name: 'All my stations' },
+    stationId: station?.id ?? null,
+    ownerId,
+    details: { days: result.days, chargers: result.chargers, created: result.created },
+  });
+  return result;
 }
 
-async function setSlotBlocked(slotId, ownerId, blocked) {
-  const slot = await assertOwnsSlot(slotId, ownerId);
-  if (slot.status === 'booked') {
-    throw new ConflictError('Cannot change a booked slot directly — cancel the booking instead');
-  }
-  const [updated] = await db('slots')
-    .where({ id: slotId })
-    .update({ status: blocked ? 'blocked' : 'available', updated_at: db.fn.now() })
-    .returning('*');
-  return updated;
+async function setSlotBlocked(slotId, ownerId, blocked, context = {}) {
+  return db.transaction(async (trx) => {
+    const { slot, charger, station } = await assertOwnsSlot(slotId, ownerId, trx);
+    if (slot.status === 'booked') {
+      throw new ConflictError('Cannot change a booked slot directly — cancel the booking instead');
+    }
+    const status = blocked ? 'blocked' : 'available';
+    if (slot.status === status) return slot;
+    const [updated] = await trx('slots')
+      .where({ id: slotId })
+      .update({ status, updated_at: trx.fn.now() })
+      .returning('*');
+    await audit.record(trx, {
+      action: blocked ? 'slot.block' : 'slot.unblock',
+      context,
+      target: slotTarget(slot, charger, station),
+      ...audit.atStation(station),
+      changes: audit.diff(slot, updated, ['status']),
+    });
+    return updated;
+  });
 }
 
-async function deleteSlot(slotId, ownerId) {
-  const slot = await assertOwnsSlot(slotId, ownerId);
-  if (slot.status !== 'available') {
-    throw new ConflictError('Only available (unbooked) slots can be deleted');
-  }
-  await db('slots').where({ id: slotId }).del();
+async function deleteSlot(slotId, ownerId, context = {}) {
+  await db.transaction(async (trx) => {
+    const { slot, charger, station } = await assertOwnsSlot(slotId, ownerId, trx);
+    if (slot.status !== 'available') {
+      throw new ConflictError('Only available (unbooked) slots can be deleted');
+    }
+    await trx('slots').where({ id: slotId }).del();
+    await audit.record(trx, { action: 'slot.delete', context, target: slotTarget(slot, charger, station), ...audit.atStation(station) });
+  });
 }
 
 module.exports = {

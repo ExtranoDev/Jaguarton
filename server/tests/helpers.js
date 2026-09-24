@@ -11,7 +11,7 @@ async function setupDatabase() {
 async function resetDatabase() {
   resetLoginThrottle();
   // Children before parents so FK constraints are satisfied.
-  await db('admin_actions').del();
+  await db('audit_log').del(); // tests only: the app and the seeds never delete it
   await db('bookings').del();
   await db('slots').del();
   await db('chargers').del();

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import ChargerManageRow from './ChargerManageRow.jsx';
 import AddChargerForm from './AddChargerForm.jsx';
 import OperatorBookingsTable from './OperatorBookingsTable.jsx';
+import StationHistory from './StationHistory.jsx';
 import { addCharger, setChargerStatus, topUpSlots, updateCharger } from '../../api/operator.js';
 
 const errorMessage = (err, fallback) => err.response?.data?.error || fallback;
@@ -92,6 +93,7 @@ export default function StationPanel({ station, onChanged }) {
           {[
             ['chargers', 'Chargers'],
             ['bookings', 'Bookings'],
+            ['history', 'History'],
           ].map(([value, label]) => (
             <button
               key={value}
@@ -121,9 +123,9 @@ export default function StationPanel({ station, onChanged }) {
         </p>
       )}
 
-      {tab === 'bookings' ? (
-        <OperatorBookingsTable stationId={station.id} />
-      ) : (
+      {tab === 'history' && <StationHistory stationId={station.id} />}
+      {tab === 'bookings' && <OperatorBookingsTable stationId={station.id} />}
+      {tab === 'chargers' && (
         <div className="flex flex-col gap-2.5">
           {station.chargers.length === 0 && !addingCharger && (
             <p className="rounded-xl bg-sage-tint p-4 text-sm text-ink-2">

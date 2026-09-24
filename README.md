@@ -51,13 +51,15 @@ Log in as an admin and you land on `/admin`. Admins can't sign up; the account c
 | Tab | What it does |
 | --- | --- |
 | Overview | Counts of users, stations, chargers and bookings, and slot utilisation for the next 7 days. No revenue figures |
-| Users | Search and filter accounts. **Add user**, **Edit** (name, email, role), **Reset password** (a generated temporary one, shown once, or one you type), and **Suspend** (with confirmation) or reactivate. Suspension takes effect immediately, even for a token already issued, and blocks login |
-| Stations | Deactivate (with confirmation) or reactivate a station, and set any charger online / offline / unavailable |
+| Users | Search and filter accounts. **Add user**, **Edit** (name, email, role), **Reset password** (a generated temporary one, shown once, or one you type), and **Suspend** (with confirmation and a reason) or reactivate. Suspension takes effect immediately, even for a token already issued, and blocks login |
+| Stations | Deactivate (with confirmation and a reason) or reactivate a station, and set any charger online / offline / unavailable |
 | Bookings | Filter by status, station and slot date. **Cancel** a booking; a written reason is required, and the slot is freed |
 | Slot coverage | Which chargers have days with no slots in the next 7 / 14 / 30 days, and a button to fill the gaps |
-| Audit log | Every admin action: who, what, on which target, and the reason |
+| Audit log | Everything recorded (see below), filtered by who, kind, action, target and date range, 50 to a page with no limit on how far back you can go. Each entry shows the date with the year and the time in Lagos time, who did it, the target, the reason, what changed (before → after) and the IP address |
 
 Rules worth knowing:
+
+- **A written reason (at least 5 characters) is required** to suspend an account, deactivate a station, cancel a booking, change someone's role and reset a password. It is kept in the audit log. Reactivating takes none.
 
 - An admin can't suspend themselves, and the last active admin can't be suspended (two admins suspending each other at once can't leave zero).
 - A deactivated station disappears from the map, its detail page and its slot list, and can't be booked (409). Bookings that already exist stay confirmed; cancel them from the Bookings tab. The operator still sees the station, flagged as deactivated.
@@ -67,6 +69,21 @@ Rules worth knowing:
 - A role can't be changed for an operator who owns stations or a driver who has bookings (suspend the account instead), and you can't change your own role or reset your own password here. There is deliberately no delete: it would cascade through stations and bookings, and suspension covers the safe case.
 - A password reset or a role change signs the user out everywhere: every token issued before it stops working (401) and they log in again. Suspension still takes effect immediately too.
 - The API lives under `/api/admin/*` and returns 401 without a token and 403 for drivers and operators.
+
+## Audit log
+
+One history of what happened, kept in the `audit_log` table:
+
+- **Security:** sign-ups, logins, failed logins, lockouts, logins refused because the account is suspended, password and profile changes.
+- **Operator changes:** stations, chargers (including status), slots generated, topped up, blocked, unblocked and deleted.
+- **Bookings:** made and cancelled, by drivers, operators and admins.
+- **Admin actions:** everything on the admin screens.
+
+Each entry is a snapshot. The name and email of whoever acted and of the target are copied in when it is written, along with before → after values, the reason, the IP address and the browser. Entries have no foreign keys, so renaming or deleting a user never changes or blocks the history.
+
+Entries are kept forever, except failed logins, which are deleted 90 days after they happen. The API checks for expired ones when it starts and every 6 hours. `npm run seed` never deletes the audit log.
+
+**Operators** get a read-only **History** tab on each of their stations: everything above that happened at that station. Drivers' emails are shown masked (`c***@example.com`), admins appear as "EChargeFind admin", and IP addresses are left out (`GET /api/operator/history`).
 
 ## For everyone: your account
 
@@ -130,7 +147,9 @@ Do these in order. The API needs the database first, and the web app needs the A
 
 ### Updating a database that already exists
 
-**Safety and robustness release: one new migration** (`20260101000010_case_insensitive_emails_and_token_version`). Render runs it on deploy. It:
+**Audit log (migration `20260101000011_create_audit_log`).** This creates `audit_log`, copies every existing `admin_actions` row into it (resolving the admin's and the target's names and emails at that moment), and drops `admin_actions`. Render runs it on deploy.
+
+**Safety and robustness (migration `20260101000010_case_insensitive_emails_and_token_version`).** Render runs it on deploy. It:
 
 - lower-cases every stored email and adds a unique index on `lower(email)`;
 - adds `users.token_version` (0 for everyone). Tokens issued before this release have no version, count as 0 and keep working until they expire or the user's password or role changes.

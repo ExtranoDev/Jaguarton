@@ -1,6 +1,7 @@
 const db = require('../../config/db');
 const { NotFoundError, ForbiddenError } = require('../../utils/errors');
 const { haversineDistanceKm } = require('../../utils/geo');
+const audit = require('../audit/audit.service');
 
 async function attachChargers(stations) {
   if (stations.length === 0) return [];
@@ -105,27 +106,44 @@ async function getStationDetail(id, viewer = null) {
   };
 }
 
-async function assertOwnsStation(stationId, userId) {
-  const station = await db('stations').where({ id: stationId }).first();
+async function assertOwnsStation(stationId, userId, conn = db) {
+  const station = await conn('stations').where({ id: stationId }).first();
   if (!station) throw new NotFoundError('Station not found');
   if (station.owner_id !== userId) throw new ForbiddenError('You do not own this station');
   return station;
 }
 
-async function createStation(ownerId, { name, address, lat, lng }) {
-  const [station] = await db('stations')
-    .insert({ owner_id: ownerId, name, address, lat, lng })
-    .returning('*');
-  return station;
+const STATION_FIELDS = ['name', 'address', 'lat', 'lng'];
+
+async function createStation(ownerId, { name, address, lat, lng }, context = {}) {
+  return db.transaction(async (trx) => {
+    const [station] = await trx('stations')
+      .insert({ owner_id: ownerId, name, address, lat, lng })
+      .returning('*');
+    await audit.record(trx, {
+      action: 'station.create',
+      context,
+      target: audit.stationTarget(station),
+      ...audit.atStation(station),
+      changes: audit.diff({}, station, STATION_FIELDS),
+    });
+    return station;
+  });
 }
 
-async function updateStation(stationId, ownerId, updates) {
-  await assertOwnsStation(stationId, ownerId);
-  const [station] = await db('stations')
-    .where({ id: stationId })
-    .update({ ...updates, updated_at: db.fn.now() })
-    .returning('*');
-  return station;
+async function updateStation(stationId, ownerId, updates, context = {}) {
+  return db.transaction(async (trx) => {
+    const before = await assertOwnsStation(stationId, ownerId, trx);
+    const [station] = await trx('stations')
+      .where({ id: stationId })
+      .update({ ...updates, updated_at: trx.fn.now() })
+      .returning('*');
+    const changes = audit.diff(before, station, STATION_FIELDS);
+    if (changes) {
+      await audit.record(trx, { action: 'station.update', context, target: audit.stationTarget(station), ...audit.atStation(station), changes });
+    }
+    return station;
+  });
 }
 
 async function listOperatorStations(ownerId) {

@@ -78,3 +78,18 @@ export function formatDateTime(iso) {
 export function formatDayCompact(dateStr) {
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
 }
+
+// "24 Sep 2026, 14:05" in Lagos time (WAT), whatever the browser's timezone: for records such as
+// the audit log, where the year and exact time matter.
+const FULL_DATE_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Lagos',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+export function formatDateTimeFull(iso) {
+  return FULL_DATE_TIME.format(new Date(iso));
+}

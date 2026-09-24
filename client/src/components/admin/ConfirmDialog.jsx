@@ -1,8 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
+// The API requires this much for a reason (suspend, deactivate, cancel, role change, password reset).
+export const MIN_REASON_LENGTH = 5;
+
 // Modal for admin actions. By default it is a destructive confirmation: Cancel is focused first,
 // so Enter can't confirm by accident. Options:
-//   reasonLabel     also require a written reason before Confirm enables (cancelling bookings)
+//   reasonLabel     also require a written reason (at least MIN_REASON_LENGTH characters, kept in
+//                   the audit log) before Confirm enables
 //   tone="primary"  a green confirm button, for forms rather than destructive actions
 //   initialFocus    "field" focuses the first input in `children` instead of Cancel
 //   confirmDisabled keeps Confirm disabled until the form in `children` is valid
@@ -24,10 +28,11 @@ export default function ConfirmDialog({
   const [reason, setReason] = useState('');
   const titleId = useId();
   const reasonId = useId();
+  const reasonHintId = useId();
   const formRef = useRef(null);
   const initialFocus = useRef(null);
   const needsReason = Boolean(reasonLabel);
-  const canConfirm = !busy && !confirmDisabled && (!needsReason || reason.trim().length > 0);
+  const canConfirm = !busy && !confirmDisabled && (!needsReason || reason.trim().length >= MIN_REASON_LENGTH);
 
   useEffect(() => {
     const opener = document.activeElement;
@@ -100,10 +105,14 @@ export default function ConfirmDialog({
               ref={initialFocus}
               rows={3}
               maxLength={500}
+              aria-describedby={reasonHintId}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="resize-none rounded-lg border border-border px-3.5 py-2.5 text-sm text-ink"
             />
+            <span id={reasonHintId} className="text-xs text-ink-2">
+              At least {MIN_REASON_LENGTH} characters. It is kept in the audit log.
+            </span>
           </div>
         )}
 

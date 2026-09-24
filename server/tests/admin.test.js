@@ -23,12 +23,20 @@ afterAll(teardownDatabase);
 
 const as = (user) => authHeader(user);
 const get = (user, path) => request(app).get(`/api/admin${path}`).set(as(user));
-const patch = (user, path, body) => request(app).patch(`/api/admin${path}`).set(as(user)).send(body);
-const post = (user, path, body) => request(app).post(`/api/admin${path}`).set(as(user)).send(body);
+const REASON = 'Checked with the account owner';
+const withReason = (body) => (body && typeof body === 'object' && !('reason' in body) ? { ...body, reason: REASON } : body);
+const patch = (user, path, body) => request(app).patch(`/api/admin${path}`).set(as(user)).send(withReason(body));
+const post = (user, path, body) => request(app).post(`/api/admin${path}`).set(as(user)).send(withReason(body));
 const book = (user, slotId) => request(app).post('/api/bookings').set(as(user)).send({ slotId });
 
+// Admin entries from audit_log, with the old "<type>:<id>" target rebuilt for readability.
 async function auditRows() {
-  return db('admin_actions').orderBy('id');
+  const rows = await db('audit_log').where('actor_role', 'admin').orderBy('id');
+  return rows.map((row) => ({
+    ...row,
+    admin_id: row.actor_id,
+    target: row.target_type === 'chargers' ? 'chargers:all' : `${row.target_type}:${row.target_id}`,
+  }));
 }
 
 describe('access control', () => {
@@ -45,7 +53,7 @@ describe('access control', () => {
     ['patch', '/stations/1', { isActive: false }],
     ['patch', '/chargers/1/status', { status: 'offline' }],
     ['get', '/bookings', null],
-    ['patch', '/bookings/1/cancel', { reason: 'test' }],
+    ['patch', '/bookings/1/cancel', { reason: 'test reason' }],
     ['get', '/slot-coverage', null],
     ['post', '/slots/top-up', { days: 1 }],
     ['get', '/audit-log', null],
@@ -190,7 +198,7 @@ describe('last-admin protection', () => {
     // moment before they were suspended) must not be able to take the last one out.
     const suspendedAdmin = await createAdmin({ email: 'admin2@test.dev', is_active: false });
 
-    await expect(adminService.setUserActive(suspendedAdmin.id, soleAdmin.id, false)).rejects.toMatchObject({
+    await expect(adminService.setUserActive(suspendedAdmin.id, soleAdmin.id, false, REASON)).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringMatching(/last active admin/i),
     });
@@ -203,7 +211,7 @@ describe('last-admin protection', () => {
     const admin = await createAdmin();
     const other = await createAdmin({ email: 'admin2@test.dev' });
 
-    await expect(adminService.setUserActive(admin.id, other.id, false)).resolves.toMatchObject({ is_active: false });
+    await expect(adminService.setUserActive(admin.id, other.id, false, REASON)).resolves.toMatchObject({ is_active: false });
   });
 
   it('two admins suspending each other at the same time never leaves zero active admins', async () => {
@@ -266,7 +274,9 @@ describe('stations and chargers', () => {
     expect(res.status).toBe(200);
     expect(res.body.charger.status).toBe('offline');
     expect((await book(driver, slots[0].id)).status).toBe(409);
-    expect((await auditRows()).map((r) => [r.action, r.target])).toEqual([['charger.set_offline', `charger:${charger.id}`]]);
+    const entries = await auditRows();
+    expect(entries.map((r) => [r.action, r.target])).toEqual([['charger.status', `charger:${charger.id}`]]);
+    expect(JSON.parse(entries[0].changes)).toEqual({ status: { from: 'online', to: 'offline' } });
   });
 
   it('validates the charger status and target', async () => {
@@ -293,7 +303,7 @@ describe('bookings', () => {
     const otherCharger = await createCharger(otherStation.id);
     const elsewhereSlot = await createSlot(otherCharger.id, futureTime(3, 10));
     await book(driver, elsewhereSlot.id);
-    await patch(admin, `/bookings/${second.id}/cancel`, { reason: 'Test' });
+    await patch(admin, `/bookings/${second.id}/cancel`, { reason: 'Test reason' });
 
     const all = await get(admin, '/bookings');
     expect(all.status).toBe(200);
@@ -349,8 +359,9 @@ describe('bookings', () => {
   it('requires a reason', async () => {
     const { admin, first, slots } = await bookedScenario();
 
-    expect((await patch(admin, `/bookings/${first.id}/cancel`, {})).status).toBe(400);
+    expect((await patch(admin, `/bookings/${first.id}/cancel`, { reason: undefined })).status).toBe(400);
     expect((await patch(admin, `/bookings/${first.id}/cancel`, { reason: '   ' })).status).toBe(400);
+    expect((await patch(admin, `/bookings/${first.id}/cancel`, { reason: ' four ' })).status).toBe(400); // under 5 once trimmed
     expect((await patch(admin, `/bookings/${first.id}/cancel`, { reason: 'x'.repeat(501) })).status).toBe(400);
 
     expect((await db('bookings').where({ id: first.id }).first()).status).toBe('confirmed');
@@ -361,8 +372,8 @@ describe('bookings', () => {
   it('is idempotent and logs a cancellation only once', async () => {
     const { admin, first } = await bookedScenario();
 
-    await patch(admin, `/bookings/${first.id}/cancel`, { reason: 'First' });
-    const again = await patch(admin, `/bookings/${first.id}/cancel`, { reason: 'Second' });
+    await patch(admin, `/bookings/${first.id}/cancel`, { reason: 'First reason' });
+    const again = await patch(admin, `/bookings/${first.id}/cancel`, { reason: 'Second reason' });
 
     expect(again.status).toBe(200);
     expect(again.body.booking.status).toBe('cancelled');
@@ -371,7 +382,7 @@ describe('bookings', () => {
 
   it('returns 404 for an unknown booking', async () => {
     const { admin } = await bookedScenario();
-    expect((await patch(admin, '/bookings/99999/cancel', { reason: 'Nope' })).status).toBe(404);
+    expect((await patch(admin, '/bookings/99999/cancel', { reason: 'No such booking' })).status).toBe(404);
   });
 });
 
@@ -385,7 +396,7 @@ describe('overview', () => {
     await createCharger(closed.id, { status: 'unavailable' });
     await book(driver, slots[0].id);
     const cancelled = await book(otherDriver, slots[1].id);
-    await patch(admin, `/bookings/${cancelled.body.booking.id}/cancel`, { reason: 'Test' });
+    await patch(admin, `/bookings/${cancelled.body.booking.id}/cancel`, { reason: 'Test reason' });
 
     const res = await get(admin, '/overview');
 
@@ -480,52 +491,9 @@ describe('slot coverage', () => {
 
     const [entry] = await auditRows();
     expect(entry).toMatchObject({ admin_id: admin.id, action: 'slots.top_up', target: 'chargers:all' });
-    expect(entry.reason).toContain(`${topUp.body.created} new slots`);
+    expect(JSON.parse(entry.details)).toMatchObject({ days: 3, created: topUp.body.created });
 
     expect((await post(admin, '/slots/top-up', { days: 0 })).status).toBe(400);
     expect((await post(admin, '/slots/top-up', { days: 31 })).status).toBe(400);
-  });
-});
-
-describe('audit log', () => {
-  it('lists actions newest first with the admin and a readable target', async () => {
-    const { driver, station, charger, slots } = await createScenario();
-    const admin = await createAdmin();
-    const booking = (await book(driver, slots[0].id)).body.booking;
-
-    await patch(admin, `/users/${driver.id}`, { isActive: false });
-    await patch(admin, `/stations/${station.id}`, { isActive: false });
-    await patch(admin, `/chargers/${charger.id}/status`, { status: 'unavailable' });
-    await patch(admin, `/bookings/${booking.id}/cancel`, { reason: 'Site closed for repairs' });
-    await post(admin, '/slots/top-up', { days: 1 });
-
-    const res = await get(admin, '/audit-log');
-
-    expect(res.status).toBe(200);
-    const { actions } = res.body;
-    expect(actions.map((a) => a.action)).toEqual([
-      'slots.top_up',
-      'booking.cancel',
-      'charger.set_unavailable',
-      'station.deactivate',
-      'user.suspend',
-    ]);
-    expect(actions[0]).toMatchObject({ admin_name: 'Admin One', admin_email: 'admin1@test.dev', target_label: 'All chargers' });
-    expect(actions[1]).toMatchObject({ reason: 'Site closed for repairs', target_label: booking.booking_reference });
-    expect(actions[2].target_label).toBe(`Charger #${charger.id} · Test Station`);
-    expect(actions[3].target_label).toBe('Test Station');
-    expect(actions[4].target_label).toBe('Driver One (driver1@test.dev)');
-    expect(new Date(actions[0].created_at).toISOString()).toBe(actions[0].created_at);
-  });
-
-  it('respects limit and validates it', async () => {
-    const { driver } = await createScenario();
-    const admin = await createAdmin();
-    await patch(admin, `/users/${driver.id}`, { isActive: false });
-    await patch(admin, `/users/${driver.id}`, { isActive: true });
-
-    expect((await get(admin, '/audit-log?limit=1')).body.actions).toHaveLength(1);
-    expect((await get(admin, '/audit-log?limit=0')).status).toBe(400);
-    expect((await get(admin, '/audit-log?limit=500')).status).toBe(400);
   });
 });

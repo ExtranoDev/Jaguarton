@@ -34,6 +34,12 @@ export async function topUpSlots({ days = 7, stationId } = {}) {
   return data;
 }
 
+// { entries, total, page, pageSize }: what happened at the operator's stations, newest first.
+export async function listOperatorHistory({ stationId, page } = {}) {
+  const { data } = await client.get('/operator/history', { params: { stationId, page } });
+  return data;
+}
+
 export async function listOperatorBookings({ stationId, status } = {}) {
   const { data } = await client.get('/operator/bookings', { params: { stationId, status } });
   return data.bookings;

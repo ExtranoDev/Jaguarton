@@ -1,5 +1,6 @@
 const stationsService = require('./stations.service');
 const asyncHandler = require('../../utils/asyncHandler');
+const { contextFrom } = require('../audit/audit.service');
 
 // Query values are already validated and converted to numbers by the route.
 const list = asyncHandler(async (req, res) => {
@@ -24,18 +25,13 @@ const detail = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const { name, address, lat, lng } = req.body;
-  const station = await stationsService.createStation(req.user.id, { name, address, lat, lng });
+  const station = await stationsService.createStation(req.user.id, { name, address, lat, lng }, contextFrom(req));
   res.status(201).json({ station });
 });
 
 const update = asyncHandler(async (req, res) => {
   const { name, address, lat, lng } = req.body;
-  const station = await stationsService.updateStation(req.params.id, req.user.id, {
-    name,
-    address,
-    lat,
-    lng,
-  });
+  const station = await stationsService.updateStation(req.params.id, req.user.id, { name, address, lat, lng }, contextFrom(req));
   res.status(200).json({ station });
 });
 

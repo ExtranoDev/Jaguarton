@@ -92,10 +92,16 @@ describe('admin users', () => {
     // Nothing happens until the dialog is confirmed.
     const dialog = screen.getByRole('dialog', { name: 'Suspend Chidi Nwosu?' });
     expect(state.requests.user).toBeUndefined();
-    await user.click(within(dialog).getByRole('button', { name: 'Suspend' }));
+    // A reason of at least 5 characters is required before Suspend is enabled.
+    const confirm = within(dialog).getByRole('button', { name: 'Suspend' });
+    expect(confirm).toBeDisabled();
+    await user.type(within(dialog).getByLabelText('Reason for suspending'), 'abcd');
+    expect(confirm).toBeDisabled();
+    await user.type(within(dialog).getByLabelText('Reason for suspending'), 'e');
+    await user.click(confirm);
 
     expect(await within(rowFor('Chidi Nwosu')).findByText('Suspended')).toBeInTheDocument();
-    expect(state.requests.user).toEqual({ id: 2, isActive: false });
+    expect(state.requests.user).toEqual({ id: 2, isActive: false, reason: 'abcde' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Reactivate Chidi Nwosu' }));
@@ -144,6 +150,7 @@ describe('admin users', () => {
     await screen.findByText('Chidi Nwosu');
 
     await user.click(screen.getByRole('button', { name: 'Suspend Adaeze Okafor' }));
+    await user.type(within(screen.getByRole('dialog')).getByLabelText('Reason for suspending'), 'Leaving the company');
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Suspend' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot suspend the last active admin');

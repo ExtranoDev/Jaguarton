@@ -18,6 +18,16 @@ const {
 const router = Router();
 
 const idParam = sharedIdParam();
+// Optional here; the service insists on one (at least 5 characters) where it is required:
+// suspend, deactivate, cancel, role change and password reset.
+const reasonBody = body('reason')
+  .optional({ values: 'null' })
+  .isString()
+  .withMessage('reason must be text')
+  .bail()
+  .trim()
+  .isLength({ max: 500 })
+  .withMessage('reason must be 500 characters or fewer');
 // A real JSON boolean: the string "false" must not be read as truthy.
 const isActiveBody = body('isActive')
   .custom((value) => typeof value === 'boolean')
@@ -48,17 +58,17 @@ router.post(
   validate,
   controller.createUser
 );
-router.put('/admin/users/:id', [idParam, nameBody, emailBody, roleBody], validate, controller.updateUser);
+router.put('/admin/users/:id', [idParam, nameBody, emailBody, roleBody, reasonBody], validate, controller.updateUser);
 router.post(
   '/admin/users/:id/reset-password',
-  [idParam, newPasswordBody('password').optional()],
+  [idParam, newPasswordBody('password').optional(), reasonBody],
   validate,
   controller.resetUserPassword
 );
-router.patch('/admin/users/:id', [idParam, isActiveBody], validate, controller.setUserActive);
+router.patch('/admin/users/:id', [idParam, isActiveBody, reasonBody], validate, controller.setUserActive);
 
 router.get('/admin/stations', controller.listStations);
-router.patch('/admin/stations/:id', [idParam, isActiveBody], validate, controller.setStationActive);
+router.patch('/admin/stations/:id', [idParam, isActiveBody, reasonBody], validate, controller.setStationActive);
 
 router.patch(
   '/admin/chargers/:id/status',
@@ -81,15 +91,7 @@ router.patch(
   '/admin/bookings/:id/cancel',
   [
     idParam,
-    body('reason')
-      .isString()
-      .withMessage('reason is required')
-      .bail()
-      .trim()
-      .notEmpty()
-      .withMessage('reason is required')
-      .isLength({ max: 500 })
-      .withMessage('reason must be 500 characters or fewer'),
+    reasonBody,
   ],
   validate,
   controller.cancelBooking
@@ -110,7 +112,18 @@ router.post(
 
 router.get(
   '/admin/audit-log',
-  [intIn(query, 'limit', { min: 1, max: 200 }, 'limit must be between 1 and 200').optional()],
+  [
+    ...['actor', 'target'].map((name) =>
+      query(name).optional({ values: 'falsy' }).isString().withMessage(`${name} must be text`).bail().isLength({ max: 100 }).withMessage(`${name} is too long`)
+    ),
+    query('action').optional({ values: 'falsy' }).isString().bail().matches(/^[a-z_]+\.[a-z_]+$/).withMessage('action is not a known action'),
+    oneOf(query, 'category', ['security', 'operator', 'booking', 'admin']).optional({ values: 'falsy' }),
+    ...['from', 'to'].map((name) =>
+      query(name).optional({ values: 'falsy' }).isString().bail().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage(`${name} must be YYYY-MM-DD`)
+    ),
+    intIn(query, 'page', { min: 1, max: 100000 }, 'page must be a positive whole number').optional(),
+    intIn(query, 'pageSize', { min: 1, max: 100 }, 'pageSize must be between 1 and 100').optional(),
+  ],
   validate,
   controller.auditLog
 );

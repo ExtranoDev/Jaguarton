@@ -36,7 +36,7 @@ function Field({ id, label, hint, children }) {
 }
 
 // The fields shared by "Add user" and "Edit user".
-function UserFields({ form, setForm, creating, isSelf }) {
+function UserFields({ form, setForm, creating, isSelf, roleChanged }) {
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
   return (
     <div className="flex flex-col gap-3.5 text-left">
@@ -46,7 +46,17 @@ function UserFields({ form, setForm, creating, isSelf }) {
       <Field id="user-email" label="Email" hint={creating ? undefined : 'Changing the email changes what they log in with.'}>
         <input id="user-email" type="email" value={form.email} onChange={set('email')} className={inputClass} />
       </Field>
-      <Field id="user-role" label="Role" hint={isSelf ? 'You cannot change your own role.' : undefined}>
+      <Field
+        id="user-role"
+        label="Role"
+        hint={
+          isSelf
+            ? 'You cannot change your own role.'
+            : roleChanged
+              ? 'Changing the role signs them out everywhere, and needs a reason below.'
+              : undefined
+        }
+      >
         <select id="user-role" value={form.role} onChange={set('role')} disabled={isSelf} className={inputClass}>
           {ROLES.map((role) => (
             <option key={role.value} value={role.value}>
@@ -149,9 +159,9 @@ export default function UsersTab() {
     }
   }
 
-  const setActive = (user, isActive) =>
+  const setActive = (user, isActive, reason) =>
     run(async () => {
-      await setUserActive(user.id, isActive);
+      await setUserActive(user.id, isActive, reason);
       close();
       reload();
     }, 'Could not update this account.');
@@ -169,23 +179,24 @@ export default function UsersTab() {
     open({ type: 'reset', user });
   };
 
-  const submitForm = () =>
+  const roleChanged = dialog?.type === 'edit' && form.role !== dialog.user.role;
+  const submitForm = (reason) =>
     run(async () => {
       const details = { name: form.name.trim(), email: form.email.trim(), role: form.role };
       if (dialog.type === 'create') {
         await createUser({ ...details, password: form.password });
         setNotice(`Created ${details.name}.`);
       } else {
-        await updateUser(dialog.user.id, details);
+        await updateUser(dialog.user.id, { ...details, reason: roleChanged ? reason : undefined });
         setNotice(`Saved changes to ${details.name}.`);
       }
       close();
       reload();
     }, dialog?.type === 'create' ? 'Could not create this user.' : 'Could not save these changes.');
 
-  const submitReset = () =>
+  const submitReset = (reason) =>
     run(async () => {
-      const { user, temporaryPassword } = await resetUserPassword(dialog.user.id, resetPassword.trim());
+      const { user, temporaryPassword } = await resetUserPassword(dialog.user.id, resetPassword.trim(), reason);
       if (temporaryPassword) {
         setDialog({ type: 'secret', user, password: temporaryPassword });
       } else {
@@ -302,9 +313,10 @@ export default function UsersTab() {
         <ConfirmDialog
           title={`Suspend ${dialog.user.name}?`}
           confirmLabel="Suspend"
+          reasonLabel="Reason for suspending"
           busy={busy}
           error={actionError}
-          onConfirm={() => setActive(dialog.user, false)}
+          onConfirm={(reason) => setActive(dialog.user, false, reason)}
           onCancel={close}
         >
           They will be signed out straight away and can&apos;t log in until you reactivate them. Their bookings and
@@ -319,12 +331,19 @@ export default function UsersTab() {
           tone="primary"
           initialFocus="field"
           confirmDisabled={!formValid}
+          reasonLabel={roleChanged ? 'Reason for changing the role' : undefined}
           busy={busy}
           error={actionError}
           onConfirm={submitForm}
           onCancel={close}
         >
-          <UserFields form={form} setForm={setForm} creating={dialog.type === 'create'} isSelf={dialog.user?.id === me?.id} />
+          <UserFields
+            form={form}
+            setForm={setForm}
+            creating={dialog.type === 'create'}
+            isSelf={dialog.user?.id === me?.id}
+            roleChanged={roleChanged}
+          />
         </ConfirmDialog>
       )}
 
@@ -334,13 +353,17 @@ export default function UsersTab() {
           confirmLabel="Reset password"
           initialFocus="field"
           confirmDisabled={!resetValid}
+          reasonLabel="Reason for the reset"
           busy={busy}
           error={actionError}
           onConfirm={submitReset}
           onCancel={close}
         >
           <div className="flex flex-col gap-3 text-left">
-            <p>Their current password stops working immediately. Leave the box empty to generate a temporary password.</p>
+            <p>
+              Their current password stops working immediately and they are signed out everywhere. Leave the box empty to
+              generate a temporary password.
+            </p>
             <Field
               id="reset-password"
               label="New password (optional)"

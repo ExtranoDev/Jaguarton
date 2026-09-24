@@ -51,11 +51,11 @@ export default function StationsTab() {
   const [busyChargerId, setBusyChargerId] = useState(null);
   const [actionError, setActionError] = useState('');
 
-  async function changeStation(station, isActive) {
+  async function changeStation(station, isActive, reason) {
     setBusy(true);
     setActionError('');
     try {
-      await setStationActive(station.id, isActive);
+      await setStationActive(station.id, isActive, reason);
       setConfirming(null);
       reload();
     } catch (err) {
@@ -140,9 +140,10 @@ export default function StationsTab() {
         <ConfirmDialog
           title={`Deactivate ${confirming.name}?`}
           confirmLabel="Deactivate"
+          reasonLabel="Reason for deactivating"
           busy={busy}
           error={actionError}
-          onConfirm={() => changeStation(confirming, false)}
+          onConfirm={(reason) => changeStation(confirming, false, reason)}
           onCancel={() => setConfirming(null)}
         >
           Drivers will no longer see it on the map or be able to book it. Bookings that already exist stay confirmed

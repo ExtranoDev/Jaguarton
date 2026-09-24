@@ -26,10 +26,11 @@ async function requireAuth(req, res, next) {
   }
 
   try {
-    const user = await db('users').where({ id: payload.sub }).select('id', 'role', 'is_active', 'token_version').first();
+    const user = await db('users').where({ id: payload.sub }).select('id', 'role', 'name', 'email', 'is_active', 'token_version').first();
     if (!user || !isCurrentToken(payload, user)) return next(new UnauthorizedError('Invalid or expired token'));
     if (!user.is_active) return next(new ForbiddenError('This account has been suspended'));
-    req.user = { id: user.id, role: user.role };
+    // name and email are there for audit log snapshots of who did something.
+    req.user = { id: user.id, role: user.role, name: user.name, email: user.email };
     return next();
   } catch (err) {
     return next(err);
@@ -52,8 +53,8 @@ async function optionalAuth(req, res, next) {
   }
 
   try {
-    const user = await db('users').where({ id: payload.sub }).select('id', 'role', 'is_active', 'token_version').first();
-    if (user && user.is_active && isCurrentToken(payload, user)) req.user = { id: user.id, role: user.role };
+    const user = await db('users').where({ id: payload.sub }).select('id', 'role', 'name', 'email', 'is_active', 'token_version').first();
+    if (user && user.is_active && isCurrentToken(payload, user)) req.user = { id: user.id, role: user.role, name: user.name, email: user.email };
     return next();
   } catch (err) {
     return next(err);

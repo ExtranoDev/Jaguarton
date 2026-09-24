@@ -315,7 +315,7 @@ describe('sessions end when the password or role changes', () => {
     const { body } = await signup();
     expect((await me(body.token)).status).toBe(200);
 
-    await request(app).post(`/api/admin/users/${body.user.id}/reset-password`).set(authHeader(boss)).send({});
+    await request(app).post(`/api/admin/users/${body.user.id}/reset-password`).set(authHeader(boss)).send({ reason: 'User asked for it' });
 
     expect((await me(body.token)).status).toBe(401);
   });

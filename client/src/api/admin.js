@@ -13,8 +13,9 @@ export async function listUsers({ role, q } = {}) {
   return data.users;
 }
 
-export async function setUserActive(id, isActive) {
-  const { data } = await client.patch(`/admin/users/${id}`, { isActive });
+// A reason is required to suspend (optional to reactivate).
+export async function setUserActive(id, isActive, reason) {
+  const { data } = await client.patch(`/admin/users/${id}`, clean({ isActive, reason }));
   return data.user;
 }
 
@@ -23,8 +24,9 @@ export async function listStations() {
   return data.stations;
 }
 
-export async function setStationActive(id, isActive) {
-  const { data } = await client.patch(`/admin/stations/${id}`, { isActive });
+// A reason is required to deactivate (optional to reactivate).
+export async function setStationActive(id, isActive, reason) {
+  const { data } = await client.patch(`/admin/stations/${id}`, clean({ isActive, reason }));
   return data.station;
 }
 
@@ -53,9 +55,11 @@ export async function topUpSlots(days = 7) {
   return data;
 }
 
-export async function listAuditLog() {
-  const { data } = await client.get('/admin/audit-log');
-  return data.actions;
+// { entries, total, page, pageSize, actions } for the filters (actor, action, category, target,
+// from, to as YYYY-MM-DD) and page.
+export async function listAuditLog(filters = {}) {
+  const { data } = await client.get('/admin/audit-log', { params: clean(filters) });
+  return data;
 }
 
 export async function createUser({ name, email, role, password }) {
@@ -63,13 +67,15 @@ export async function createUser({ name, email, role, password }) {
   return data.user;
 }
 
-export async function updateUser(id, { name, email, role }) {
-  const { data } = await client.put(`/admin/users/${id}`, { name, email, role });
+// `reason` is required when the role changes.
+export async function updateUser(id, { name, email, role, reason }) {
+  const { data } = await client.put(`/admin/users/${id}`, clean({ name, email, role, reason }));
   return data.user;
 }
 
 // Omit `password` to have the server generate a temporary one (returned once as temporaryPassword).
-export async function resetUserPassword(id, password) {
-  const { data } = await client.post(`/admin/users/${id}/reset-password`, password ? { password } : {});
+// A reason is required.
+export async function resetUserPassword(id, password, reason) {
+  const { data } = await client.post(`/admin/users/${id}/reset-password`, clean({ password, reason }));
   return data;
 }

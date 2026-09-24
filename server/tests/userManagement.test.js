@@ -17,12 +17,22 @@ beforeEach(resetDatabase);
 afterAll(teardownDatabase);
 
 const as = (user) => authHeader(user);
+const REASON = 'Checked with the account owner';
+const withReason = (body) => (body && typeof body === 'object' && !('reason' in body) ? { ...body, reason: REASON } : body);
 const admin = (user, method, path, body) => {
   const req = request(app)[method](`/api/admin${path}`).set(as(user));
-  return body === undefined ? req : req.send(body);
+  return body === undefined ? req : req.send(withReason(body));
 };
 const login = (email, password) => request(app).post('/api/auth/login').send({ email, password });
-const auditRows = () => db('admin_actions').orderBy('id');
+// Admin entries from audit_log, with the old "<type>:<id>" target rebuilt for readability.
+async function auditRows() {
+  const rows = await db('audit_log').where('actor_role', 'admin').orderBy('id');
+  return rows.map((row) => ({
+    ...row,
+    admin_id: row.actor_id,
+    target: row.target_type === 'chargers' ? 'chargers:all' : `${row.target_type}:${row.target_id}`,
+  }));
+}
 
 async function signUp(email = 'ada@test.dev', password = 'first-password', role = 'driver') {
   const res = await request(app).post('/api/auth/signup').send({ name: 'Ada Driver', email, password, role });
@@ -105,7 +115,8 @@ describe('admin: create user', () => {
     expect(loggedIn.body.user.role).toBe('operator');
 
     const [entry] = await auditRows();
-    expect(entry).toMatchObject({ admin_id: boss.id, action: 'user.create', target: `user:${res.body.user.id}`, reason: 'Created as operator' });
+    expect(entry).toMatchObject({ admin_id: boss.id, action: 'user.create', target: `user:${res.body.user.id}`, target_email: 'newop@test.dev' });
+    expect(JSON.parse(entry.changes).role).toEqual({ from: null, to: 'operator' });
     expect(JSON.stringify(entry)).not.toContain('welcome-2026');
     expect((await admin(boss, 'get', '/users?q=newop')).body.users).toHaveLength(1);
   });
@@ -156,7 +167,11 @@ describe('admin: edit user', () => {
     expect((await login('ada.new@test.dev', 'first-password')).status).toBe(200);
     expect((await login('ada@test.dev', 'first-password')).status).toBe(401);
     const [entry] = await auditRows();
-    expect(entry).toMatchObject({ action: 'user.update', target: `user:${ada.id}`, reason: 'name changed; email changed' });
+    expect(entry).toMatchObject({ action: 'user.update', target: `user:${ada.id}`, reason: null });
+    expect(JSON.parse(entry.changes)).toEqual({
+      name: { from: 'Ada Driver', to: 'Ada L.' },
+      email: { from: 'ada@test.dev', to: 'ada.new@test.dev' },
+    });
   });
 
   it('changes a role where nothing depends on the old one; the old session ends and the next one has the new powers', async () => {
@@ -170,7 +185,9 @@ describe('admin: edit user', () => {
     const again = await login(ada.email, 'first-password');
     expect(again.status).toBe(200);
     expect((await request(app).get('/api/operator/stations').set({ Authorization: `Bearer ${again.body.token}` })).status).toBe(200);
-    expect((await auditRows())[0].reason).toBe('role driver → operator');
+    const [entry] = await auditRows();
+    expect(entry.reason).toBe(REASON);
+    expect(JSON.parse(entry.changes)).toEqual({ role: { from: 'driver', to: 'operator' } });
   });
 
   it('does nothing, and logs nothing, when nothing changed', async () => {
@@ -238,7 +255,7 @@ describe('admin: edit user', () => {
     const suspended = await createAdmin({ email: 'admin2@test.dev', is_active: false });
 
     await expect(
-      adminService.updateUser(suspended.id, sole.id, { name: sole.name, email: sole.email, role: 'driver' })
+      adminService.updateUser(suspended.id, sole.id, { name: sole.name, email: sole.email, role: 'driver', reason: REASON })
     ).rejects.toMatchObject({ statusCode: 409, message: expect.stringMatching(/last active admin/i) });
 
     expect((await db('users').where({ id: sole.id }).first()).role).toBe('admin');
@@ -272,8 +289,9 @@ describe('admin: reset password', () => {
 
     // The audit log records that it happened, never the password.
     const [entry] = await auditRows();
-    expect(entry).toMatchObject({ action: 'user.reset_password', target: `user:${ada.id}`, reason: 'Temporary password generated' });
-    expect(JSON.stringify(await db('admin_actions'))).not.toContain(res.body.temporaryPassword);
+    expect(entry).toMatchObject({ action: 'user.reset_password', target: `user:${ada.id}`, reason: REASON });
+    expect(JSON.parse(entry.details)).toEqual({ method: 'temporary password generated' });
+    expect(JSON.stringify(await db('audit_log'))).not.toContain(res.body.temporaryPassword);
   });
 
   it('generates a different password each time', async () => {
@@ -296,7 +314,7 @@ describe('admin: reset password', () => {
     expect(res.body.temporaryPassword).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain('chosen-by-admin');
     expect((await login('ada@test.dev', 'chosen-by-admin')).status).toBe(200);
-    expect((await auditRows())[0].reason).toBe('Password set by an admin');
+    expect(JSON.parse((await auditRows())[0].details)).toEqual({ method: 'password set by an admin' });
   });
 
   it('works for a suspended user too (they still cannot log in until reactivated)', async () => {

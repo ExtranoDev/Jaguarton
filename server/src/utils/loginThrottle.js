@@ -34,7 +34,9 @@ function recordFailure(email, ip, now = Date.now()) {
     for (const key of failures.keys()) recentFailures(key, now); // deleting while iterating a Map is safe
   }
   const key = keyFor(email, ip);
-  failures.set(key, [...recentFailures(key, now), now]);
+  const recent = [...recentFailures(key, now), now];
+  failures.set(key, recent);
+  return recent.length; // failures in the window, this one included
 }
 
 function clearFailures(email, ip) {

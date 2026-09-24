@@ -13,8 +13,8 @@ exports.seed = async function seed(knex) {
   }
 
   // Delete in FK-safe order (children before parents) so re-running the
-  // seed is idempotent regardless of DB engine.
-  await knex('admin_actions').del();
+  // seed is idempotent regardless of DB engine. The audit log is never deleted: it has no
+  // foreign keys (see migration 11) and is kept forever.
   await knex('bookings').del();
   await knex('slots').del();
   await knex('chargers').del();

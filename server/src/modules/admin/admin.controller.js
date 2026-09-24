@@ -1,5 +1,6 @@
 const adminService = require('./admin.service');
 const asyncHandler = require('../../utils/asyncHandler');
+const { contextFrom } = require('../audit/audit.service');
 
 const optionalInt = (value) => (value ? Number(value) : undefined);
 
@@ -14,25 +15,28 @@ const listUsers = asyncHandler(async (req, res) => {
 
 const createUser = asyncHandler(async (req, res) => {
   const { name, email, role, password } = req.body;
-  const user = await adminService.createUser(req.user.id, { name, email, role, password });
+  const user = await adminService.createUser(req.user.id, { name, email, role, password }, contextFrom(req));
   res.status(201).json({ user });
 });
 
 const updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role } = req.body;
-  const user = await adminService.updateUser(req.user.id, Number(req.params.id), { name, email, role });
+  const { name, email, role, reason } = req.body;
+  const user = await adminService.updateUser(req.user.id, Number(req.params.id), { name, email, role, reason }, contextFrom(req));
   res.status(200).json({ user });
 });
 
 const resetUserPassword = asyncHandler(async (req, res) => {
-  const { user, temporaryPassword } = await adminService.resetUserPassword(req.user.id, Number(req.params.id), {
-    password: req.body.password,
-  });
+  const { user, temporaryPassword } = await adminService.resetUserPassword(
+    req.user.id,
+    Number(req.params.id),
+    { password: req.body.password, reason: req.body.reason },
+    contextFrom(req)
+  );
   res.status(200).json({ user, temporaryPassword });
 });
 
 const setUserActive = asyncHandler(async (req, res) => {
-  const user = await adminService.setUserActive(req.user.id, Number(req.params.id), req.body.isActive);
+  const user = await adminService.setUserActive(req.user.id, Number(req.params.id), req.body.isActive, req.body.reason, contextFrom(req));
   res.status(200).json({ user });
 });
 
@@ -41,12 +45,12 @@ const listStations = asyncHandler(async (req, res) => {
 });
 
 const setStationActive = asyncHandler(async (req, res) => {
-  const station = await adminService.setStationActive(req.user.id, Number(req.params.id), req.body.isActive);
+  const station = await adminService.setStationActive(req.user.id, Number(req.params.id), req.body.isActive, req.body.reason, contextFrom(req));
   res.status(200).json({ station });
 });
 
 const setChargerStatus = asyncHandler(async (req, res) => {
-  const charger = await adminService.setChargerStatus(req.user.id, Number(req.params.id), req.body.status);
+  const charger = await adminService.setChargerStatus(req.user.id, Number(req.params.id), req.body.status, contextFrom(req));
   res.status(200).json({ charger });
 });
 
@@ -61,7 +65,7 @@ const listBookings = asyncHandler(async (req, res) => {
 });
 
 const cancelBooking = asyncHandler(async (req, res) => {
-  const booking = await adminService.cancelBooking(req.user.id, Number(req.params.id), req.body.reason);
+  const booking = await adminService.cancelBooking(req.user.id, Number(req.params.id), req.body.reason, contextFrom(req));
   res.status(200).json({ booking });
 });
 
@@ -71,13 +75,23 @@ const slotCoverage = asyncHandler(async (req, res) => {
 });
 
 const topUpSlots = asyncHandler(async (req, res) => {
-  const result = await adminService.topUpAllSlots(req.user.id, { days: optionalInt(req.body.days) });
+  const result = await adminService.topUpAllSlots(req.user.id, { days: optionalInt(req.body.days) }, contextFrom(req));
   res.status(200).json(result);
 });
 
 const auditLog = asyncHandler(async (req, res) => {
-  const actions = await adminService.listAuditLog({ limit: optionalInt(req.query.limit) });
-  res.status(200).json({ actions });
+  const { actor, action, category, target, from, to, page, pageSize } = req.query;
+  const result = await adminService.listAuditLog({
+    actor: actor || undefined,
+    action: action || undefined,
+    category: category || undefined,
+    target: target || undefined,
+    from: from || undefined,
+    to: to || undefined,
+    page: page || 1,
+    pageSize: pageSize || 50,
+  });
+  res.status(200).json(result);
 });
 
 module.exports = {
