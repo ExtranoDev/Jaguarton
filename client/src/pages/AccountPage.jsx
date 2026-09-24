@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Navbar from '../components/Navbar.jsx';
+import PasswordInput from '../components/PasswordInput.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { changePassword } from '../api/auth.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -114,14 +115,14 @@ function PasswordCard() {
     <form onSubmit={save} className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
       <h2 className="font-display text-lg font-semibold text-ink">Change password</h2>
       <Field id="current-password" label="Current password">
-        <input id="current-password" type="password" autoComplete="current-password" value={form.current} onChange={set('current')} className={inputClass} />
+        <PasswordInput id="current-password" label="current password" autoComplete="current-password" value={form.current} onChange={set('current')} className={inputClass} />
       </Field>
       <Field id="new-password" label="New password">
-        <input id="new-password" type="password" autoComplete="new-password" value={form.next} onChange={set('next')} className={inputClass} />
+        <PasswordInput id="new-password" label="new password" autoComplete="new-password" value={form.next} onChange={set('next')} className={inputClass} />
         <span className="text-xs text-ink-2">At least {MIN_PASSWORD_LENGTH} characters.</span>
       </Field>
       <Field id="confirm-password" label="Confirm new password">
-        <input id="confirm-password" type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} className={inputClass} />
+        <PasswordInput id="confirm-password" label="password confirmation" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} className={inputClass} />
       </Field>
       {error && (
         <p role="alert" className="rounded-lg bg-terracotta-tint px-3 py-2 text-sm text-terracotta">

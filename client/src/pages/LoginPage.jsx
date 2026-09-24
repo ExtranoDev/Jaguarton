@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout.jsx';
+import PasswordInput from '../components/PasswordInput.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeFor } from '../utils/roles.js';
 
@@ -67,10 +68,10 @@ export default function LoginPage() {
             <label htmlFor="password" className="text-[13px] font-semibold text-ink-2">
               Password
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               required
+              autoComplete="current-password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               className="rounded-lg border border-border px-3.5 py-3 text-sm text-ink"
