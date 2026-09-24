@@ -1,6 +1,8 @@
-// Rolls the three admin migrations back and forward again on whichever database the
+// Rolls the admin migrations (and every later one) back and forward again on whichever database the
 // suite runs against (SQLite, or Postgres via TEST_DATABASE_URL), with data in every
 // table, to prove neither direction loses rows or leaves the schema half-changed.
+const fs = require('fs');
+const path = require('path');
 const { generateBookingReference } = require('../src/utils/bookingReference');
 const {
   db,
@@ -11,7 +13,10 @@ const {
   createScenario,
 } = require('./helpers');
 
-const ADMIN_MIGRATIONS = 3;
+// The first admin migration is 20260101000007; everything from there on is rolled back.
+const MIGRATIONS_TO_ROLL_BACK = fs
+  .readdirSync(path.join(__dirname, '../src/db/migrations'))
+  .filter((file) => file.endsWith('.js') && file >= '20260101000007').length;
 
 beforeAll(setupDatabase);
 beforeEach(resetDatabase);
@@ -55,7 +60,7 @@ it('rolls back and re-applies cleanly, keeping every non-admin row', async () =>
   const before = await counts();
 
   try {
-    for (let i = 0; i < ADMIN_MIGRATIONS; i += 1) await db.migrate.down();
+    for (let i = 0; i < MIGRATIONS_TO_ROLL_BACK; i += 1) await db.migrate.down();
 
     // Old schema: no admin role, no is_active, no audit table; the admin user is gone,
     // everything else (including the booking that references users) is intact.
@@ -80,4 +85,43 @@ it('rolls back and re-applies cleanly, keeping every non-admin row', async () =>
   const users = await db('users').select('is_active');
   expect(users.every((user) => Boolean(user.is_active))).toBe(true);
   expect(await db('stations').first()).toHaveProperty('is_active');
+});
+
+describe('migration 10: case-insensitive emails and token_version', () => {
+  const MIGRATION = '20260101000010_case_insensitive_emails_and_token_version.js';
+  const emails = async () => (await db('users').orderBy('id').select('email')).map((row) => row.email);
+
+  it('lower-cases existing emails and adds token_version (0 for everyone)', async () => {
+    try {
+      await db.migrate.down({ name: MIGRATION });
+      expect(await db.schema.hasColumn('users', 'token_version')).toBe(false);
+      await insertUser('driver', 'Mixed.Case@Test.DEV');
+      await insertUser('operator', 'plain@test.dev');
+
+      await db.migrate.latest();
+
+      expect(await emails()).toEqual(['mixed.case@test.dev', 'plain@test.dev']);
+      expect((await db('users').select('token_version')).map((row) => Number(row.token_version))).toEqual([0, 0]);
+      await db.migrate.latest(); // re-running is a no-op
+      expect(await emails()).toEqual(['mixed.case@test.dev', 'plain@test.dev']);
+    } finally {
+      await db.migrate.latest();
+    }
+  });
+
+  it('stops, names the clash and changes nothing when two accounts differ only by case', async () => {
+    try {
+      await db.migrate.down({ name: MIGRATION });
+      await insertUser('driver', 'Ada@Test.dev');
+      await insertUser('driver', 'ada@test.dev');
+
+      await expect(db.migrate.latest()).rejects.toThrow(/ada@test\.dev \(2 accounts\)/);
+
+      expect(await emails()).toEqual(['Ada@Test.dev', 'ada@test.dev']);
+      expect(await db.schema.hasColumn('users', 'token_version')).toBe(false);
+    } finally {
+      await db('users').where({ email: 'Ada@Test.dev' }).del();
+      await db.migrate.latest();
+    }
+  });
 });

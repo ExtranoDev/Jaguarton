@@ -61,15 +61,32 @@ Rules worth knowing:
 
 - An admin can't suspend themselves, and the last active admin can't be suspended (two admins suspending each other at once can't leave zero).
 - A deactivated station disappears from the map, its detail page and its slot list, and can't be booked (409). Bookings that already exist stay confirmed; cancel them from the Bookings tab. The operator still sees the station, flagged as deactivated.
-- Utilisation is booked slots ÷ (booked + open slots on online chargers at active stations). Blocked slots don't count.
+- Suspending an operator hides all of their stations from drivers (map, detail page, slot lists) and makes them unbookable (409), exactly like deactivating each one. Their existing bookings stay confirmed; cancel them from the Bookings tab if needed. The Stations tab's data carries `owner_active` for each station.
+- Utilisation is booked slots ÷ (booked + open slots on online chargers at active stations whose operator isn't suspended). Blocked slots don't count.
 - A coverage "gap" is a day with no slots at all, and today only counts while a default slot could still be created for it.
 - A role can't be changed for an operator who owns stations or a driver who has bookings (suspend the account instead), and you can't change your own role or reset your own password here. There is deliberately no delete: it would cascade through stations and bookings, and suspension covers the safe case.
-- A password reset doesn't sign the user out of sessions they already have; they last until the token expires (7 days). Suspend the account if you need someone out now.
+- A password reset or a role change signs the user out everywhere: every token issued before it stops working (401) and they log in again. Suspension still takes effect immediately too.
 - The API lives under `/api/admin/*` and returns 401 without a token and 403 for drivers and operators.
 
 ## For everyone: your account
 
-Click your name in the navbar to open **Account**: change your name, and change your password (it asks for the current one; at least 8 characters). If your account is suspended, or your session expires, while you are using the app you are signed out with a message saying why.
+Click your name in the navbar to open **Account**: change your name, and change your password (it asks for the current one; at least 8 characters). Changing your password signs you out on every other device; you stay signed in where you changed it. If your account is suspended, or your session expires, while you are using the app you are signed out with a message saying why.
+
+Rules that apply to every account:
+
+- **Passwords** must be at least 8 characters wherever one is set (sign-up, Account, admin). Older, shorter passwords still work for logging in.
+- **Emails are not case-sensitive.** They are stored in lower case, `Ada@Example.com` and `ada@example.com` are the same account, and you can log in with either.
+- **Login throttling:** after 10 wrong passwords for one email from one IP address within 15 minutes, further attempts from there (even with the right password) get "Too many failed login attempts" (429, with a `Retry-After` header) until the oldest failure is 15 minutes old. An unknown email is treated exactly like a wrong password, and takes as long, so neither the message nor the timing reveals who has an account. The counter lives in the API's memory (it runs as one instance), so a restart clears it.
+
+## Booking rules
+
+- A slot that has already started can't be booked (409), even if it is still marked available.
+- A driver can't hold two confirmed bookings whose times overlap, at any station (409, naming the booking that clashes). Cancelling one frees the time again.
+- Operators can create slots from today up to 90 days ahead; slots that have already started are never created.
+
+## API input limits
+
+Anything outside these is a 400 with a message saying which field is wrong (never a 500): ids must be whole numbers from 1 to 2,147,483,647; names up to 100 characters (people) or 120 (stations); addresses up to 255; emails up to 254; passwords 8 to 128 characters; charger power more than 0 and at most 1000 kW; price more than 0 and at most ₦100,000 per kWh; text fields must be text (not objects or lists), and list filters must be single values. Malformed JSON is a 400 and a body over 100 kB is a 413. Every response carries security headers (`nosniff`, `X-Frame-Options: DENY`, HSTS, `Referrer-Policy: no-referrer`, a deny-all CSP) and no `X-Powered-By`.
 
 ## Finding and adding stations
 
@@ -80,7 +97,7 @@ Click your name in the navbar to open **Account**: change your name, and change 
 ## Tests
 
 ```bash
-cd server && npm test     # Jest + Supertest against SQLite (includes rolling the admin migrations back and forward)
+cd server && npm test     # Jest + Supertest against SQLite (includes rolling the migrations back and forward)
 cd client && npm test     # Vitest + React Testing Library + msw
 ```
 
@@ -96,13 +113,13 @@ Do these in order. The API needs the database first, and the web app needs the A
 
 1. **Push the repo to GitHub.**
 2. **Neon** — create a project and copy the connection string (`postgres://...neon.tech/...?sslmode=require`). If it ends with `&channel_binding=require`, delete that part; the `pg` driver doesn't need it.
-3. **Create the tables and demo data** from your own machine (Render's free tier has no shell). `npm run seed` also creates `admin@example.com`, with `SEED_PASSWORD`:
+3. **Create the tables and demo data** from your own machine (Render's free tier has no shell). `npm run seed` also creates `admin@example.com`, with `SEED_PASSWORD`. Because it starts by deleting everything, it refuses to run with `NODE_ENV=production` unless you also set `ALLOW_DESTRUCTIVE_SEED=yes`; only do that for a brand-new, empty database:
    ```bash
    cd server
    npm install
    export NODE_ENV=production DATABASE_URL="<neon connection string>" SEED_PASSWORD="<a password for the demo accounts>"
    npm run migrate
-   npm run seed
+   ALLOW_DESTRUCTIVE_SEED=yes npm run seed   # new, empty database only
    ```
 4. **Render** — New, then Blueprint, pick the repo (it reads `render.yaml`). When prompted set `DATABASE_URL` to the Neon string. Leave `CORS_ORIGIN` blank for now. Note the service URL, e.g. `https://echargefind-api.onrender.com`. Check `<url>/health` returns `{"status":"ok"}`.
 5. **Vercel** — import the repo, set the Root Directory to `client`. Add environment variables:
@@ -113,7 +130,16 @@ Do these in order. The API needs the database first, and the web app needs the A
 
 ### Updating a database that already exists
 
-**This round of changes needs no new migration.** To get the Ogun and Oyo stations onto Neon (this also creates the two operator accounts, so `SEED_PASSWORD` is required):
+**Safety and robustness release: one new migration** (`20260101000010_case_insensitive_emails_and_token_version`). Render runs it on deploy. It:
+
+- lower-cases every stored email and adds a unique index on `lower(email)`;
+- adds `users.token_version` (0 for everyone). Tokens issued before this release have no version, count as 0 and keep working until they expire or the user's password or role changes.
+
+If two existing accounts differ only by the case of their email, the migration stops before changing anything and names the address; Render's build then fails and the previous deploy stays live. Rename or merge one of the two accounts, then deploy again. To see in advance whether that will happen, run this read-only query against Neon: `SELECT lower(email), count(*) FROM users GROUP BY lower(email) HAVING count(*) > 1;` (no rows means it will go through).
+
+Nothing else changes in the data. Deploy the API and the web app together: the new web app stores the fresh token that a password change now returns.
+
+The Ogun and Oyo stations, from the release before, are added with `seed:regions` (this also creates the two operator accounts, so `SEED_PASSWORD` is required):
 
 ```bash
 cd server
@@ -134,7 +160,7 @@ npm run migrate       # applies the 3 new migrations (Render also does this on e
 npm run seed:admin    # adds admin@example.com; skips it if it already exists. Render never runs this
 ```
 
-Do **not** run `npm run seed` against a database whose data you want to keep: it deletes every user, station, charger, slot and booking first. `seed:admin` only ever adds the admin. Deploy the API before (or together with) the web app, because the new client calls `/api/admin`, and the API now checks the user's account on every request.
+Do **not** run `npm run seed` against a database whose data you want to keep: it deletes every user, station, charger, slot and booking first (and with `NODE_ENV=production` it refuses unless `ALLOW_DESTRUCTIVE_SEED=yes`). `seed:admin` only ever adds the admin. Deploy the API before (or together with) the web app, because the new client calls `/api/admin`, and the API now checks the user's account on every request.
 
 Render's free tier sleeps after 15 minutes idle and takes about a minute to wake. Open `<api url>/health` a couple of minutes before you demo.
 
@@ -147,6 +173,7 @@ Render's free tier sleeps after 15 minutes idle and takes about a minute to wake
 | API | `CORS_ORIGIN` | Allowed browser origins, comma-separated |
 | API | `APP_TIMEZONE` | What "a day" means for slots. Defaults to `Africa/Lagos`, independent of the host clock |
 | API | `AUTO_TOP_UP_SLOTS_DAYS` | Optional. Keeps this many days of slots created (checked at boot and every 6 hours) |
+| API | `ALLOW_DESTRUCTIVE_SEED` | Only for seeding a brand-new production database: `yes` lets `npm run seed` (which wipes every table) run with `NODE_ENV=production`. Never set it on Render |
 | API | `SEED_PASSWORD` | Optional. Password for the seeded demo accounts, including the admin and the Ogun/Oyo operators. Required by `seed:regions` in production |
 | Web | `VITE_API_BASE_URL` | API base URL including `/api`. Baked in at build time, so redeploy after changing it |
 | Web | `VITE_MAPTILER_KEY` | Optional. Map tiles, and address search when adding a station. Baked in at build time, so redeploy after changing it |

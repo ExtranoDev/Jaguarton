@@ -1,4 +1,4 @@
-import client from './client';
+import client, { TOKEN_KEY } from './client';
 
 export async function signup({ name, email, password, role }) {
   const { data } = await client.post('/auth/signup', { name, email, password, role });
@@ -20,7 +20,10 @@ export async function updateProfile({ name }) {
   return data.user;
 }
 
+// Changing the password signs out every other session. The API sends back a fresh token so this
+// one stays signed in; without storing it, the next request would count as a session that ended.
 export async function changePassword({ currentPassword, newPassword }) {
   const { data } = await client.post('/auth/change-password', { currentPassword, newPassword });
+  if (data.token) localStorage.setItem(TOKEN_KEY, data.token);
   return data;
 }

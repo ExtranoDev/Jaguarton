@@ -21,10 +21,10 @@ async function getSlotsForCharger(chargerId, dateStr, viewer = null) {
   // An operator can only look at slots on their own chargers.
   if (viewer?.role === 'operator' && station?.owner_id !== viewer.id) throw new NotFoundError('Charger not found');
 
-  // An offline/unavailable charger, or one at a deactivated station, has no
-  // bookable slots, regardless of what individual slot rows say.
+  // An offline/unavailable charger, or one at a deactivated station or a suspended operator's
+  // station, has no bookable slots, regardless of what individual slot rows say.
   if (charger.status !== 'online') return [];
-  if (!station || !station.is_active) return [];
+  if (!station || !stationsService.isPubliclyVisible(station, await stationsService.ownerIsActive(db, station))) return [];
 
   let query = db('slots').where({ charger_id: chargerId });
 
@@ -46,11 +46,23 @@ async function assertOwnsSlot(slotId, userId) {
   return slot;
 }
 
+// Slots can be created from today up to this many days ahead (in APP_TIMEZONE).
+const MAX_GENERATE_DAYS_AHEAD = 90;
+
 async function generateSlots(chargerId, ownerId, { date, startHour, endHour, durationMinutes }) {
   await chargersService.assertOwnsCharger(chargerId, ownerId);
   requireValidDate(date);
+  const today = toZonedDateString(new Date());
+  const lastDay = addDaysToDateString(today, MAX_GENERATE_DAYS_AHEAD);
+  if (date < today || date > lastDay) {
+    throw new BadRequestError(`date must be between today (${today}) and ${lastDay}`);
+  }
 
-  const rows = buildSlotRows(chargerId, date, { startHour, endHour, durationMinutes });
+  // Like the top-up, never create a slot that has already started: nobody could book it.
+  const now = Date.now();
+  const rows = buildSlotRows(chargerId, date, { startHour, endHour, durationMinutes }).filter(
+    (row) => Date.parse(row.start_time) > now
+  );
   if (rows.length === 0) return [];
 
   return db('slots').insert(rows).onConflict(['charger_id', 'start_time']).ignore().returning('*');

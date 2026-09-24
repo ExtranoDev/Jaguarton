@@ -1,23 +1,43 @@
 const { Router } = require('express');
-const { body } = require('express-validator');
+const { body, query } = require('express-validator');
 const controller = require('./stations.controller');
 const { validate } = require('../../middleware/validate.middleware');
 const { requireAuth, optionalAuth } = require('../../middleware/auth.middleware');
 const { requireRole } = require('../../middleware/role.middleware');
+const {
+  LIMITS,
+  CONNECTOR_TYPES,
+  CHARGER_STATUSES,
+  floatIn,
+  oneOf,
+  idParam,
+  requiredText,
+  optionalFloatQuery,
+} = require('../../middleware/validators');
 
 const router = Router();
 
 const stationValidators = [
-  body('name').trim().notEmpty().withMessage('Name is required'),
-  body('address').trim().notEmpty().withMessage('Address is required'),
-  body('lat').isFloat({ min: -90, max: 90 }).withMessage('lat must be a valid latitude'),
-  body('lng').isFloat({ min: -180, max: 180 }).withMessage('lng must be a valid longitude'),
+  requiredText(body, 'name', LIMITS.stationName, 'Name'),
+  requiredText(body, 'address', LIMITS.address, 'Address'),
+  floatIn(body, 'lat', { min: -90, max: 90 }, 'lat must be a valid latitude'),
+  floatIn(body, 'lng', { min: -180, max: 180 }, 'lng must be a valid longitude'),
 ];
 
-router.get('/stations', optionalAuth, controller.list);
+const listValidators = [
+  optionalFloatQuery('lat', { min: -90, max: 90 }, 'lat must be a valid latitude'),
+  optionalFloatQuery('lng', { min: -180, max: 180 }, 'lng must be a valid longitude'),
+  optionalFloatQuery('radiusKm', { gt: 0, max: 20000 }, 'radiusKm must be a positive distance'),
+  optionalFloatQuery('minPrice', { min: 0, max: 1e6 }, 'minPrice must be a price'),
+  optionalFloatQuery('maxPrice', { min: 0, max: 1e6 }, 'maxPrice must be a price'),
+  oneOf(query, 'status', CHARGER_STATUSES).optional({ values: 'falsy' }),
+  oneOf(query, 'connectorType', CONNECTOR_TYPES).optional({ values: 'falsy' }),
+];
+
+router.get('/stations', optionalAuth, listValidators, validate, controller.list);
 router.get('/operator/stations', requireAuth, requireRole('operator'), controller.mine);
-router.get('/stations/:id', optionalAuth, controller.detail);
+router.get('/stations/:id', [idParam()], validate, optionalAuth, controller.detail);
 router.post('/stations', requireAuth, requireRole('operator'), stationValidators, validate, controller.create);
-router.put('/stations/:id', requireAuth, requireRole('operator'), stationValidators, validate, controller.update);
+router.put('/stations/:id', requireAuth, requireRole('operator'), [idParam(), ...stationValidators], validate, controller.update);
 
 module.exports = router;

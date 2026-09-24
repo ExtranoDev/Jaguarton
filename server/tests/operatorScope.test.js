@@ -109,10 +109,11 @@ describe('everyone else is unaffected', () => {
     expect(garbage.status).toBe(200);
     expect(garbage.body.stations).toHaveLength(2);
 
+    // Anna's own station is now hidden from everyone, because its operator is suspended.
     await db('users').where({ id: anna.id }).update({ is_active: false });
     const suspended = await request(app).get('/api/stations').set({ Authorization: `Bearer ${tokenFor(anna)}` });
     expect(suspended.status).toBe(200);
-    expect(suspended.body.stations).toHaveLength(2);
+    expect(suspended.body.stations.map((s) => s.name)).toEqual(["Ben's Station"]);
   });
 });
 

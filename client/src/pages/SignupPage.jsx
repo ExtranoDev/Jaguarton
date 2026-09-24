@@ -5,6 +5,8 @@ import PasswordInput from '../components/PasswordInput.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeFor } from '../utils/roles.js';
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export default function SignupPage() {
   const { signup } = useAuth();
   const navigate = useNavigate();
@@ -70,12 +72,16 @@ export default function SignupPage() {
             <PasswordInput
               id="password"
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
               autoComplete="new-password"
+              aria-describedby="password-hint"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               className="rounded-lg border border-border px-3.5 py-3 text-sm text-ink"
             />
+            <span id="password-hint" className="text-xs text-ink-2">
+              At least {MIN_PASSWORD_LENGTH} characters.
+            </span>
           </div>
 
           <div className="flex flex-col gap-2">

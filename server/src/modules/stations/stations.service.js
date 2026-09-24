@@ -13,11 +13,24 @@ async function attachChargers(stations) {
   }));
 }
 
-// Deactivated stations (an admin action) are hidden from drivers everywhere; operators
-// still get them from listOperatorStations.
+// Whether drivers can see and book a station: it is active and its operator isn't suspended.
+// `ownerActive` is the owner's users.is_active (0/1 on SQLite, a boolean on Postgres).
+const isPubliclyVisible = (station, ownerActive) => Boolean(station.is_active) && Boolean(ownerActive);
+
+async function ownerIsActive(conn, station) {
+  const owner = await conn('users').where({ id: station.owner_id }).select('is_active').first();
+  return Boolean(owner?.is_active);
+}
+
+// Deactivated stations (an admin action), and every station of a suspended operator, are hidden
+// from drivers everywhere; operators still get their own from listOperatorStations.
 // `viewer` is the signed-in user, if any. An operator only ever sees their own stations.
 async function listStations(filters = {}, viewer = null) {
-  let idsQuery = db('stations as s').distinct('s.id').where('s.is_active', true);
+  let idsQuery = db('stations as s')
+    .distinct('s.id')
+    .innerJoin('users as owner', 'owner.id', 's.owner_id')
+    .where('s.is_active', true)
+    .andWhere('owner.is_active', true);
   if (viewer?.role === 'operator') idsQuery = idsQuery.where('s.owner_id', viewer.id);
 
   const needsChargerJoin =
@@ -60,7 +73,8 @@ async function getStationDetail(id, viewer = null) {
   const station = await db('stations').where({ id }).first();
   const isOperator = viewer?.role === 'operator';
   const isOwner = isOperator && station?.owner_id === viewer.id;
-  if (!station || (isOperator && !isOwner) || (!station.is_active && !isOwner)) {
+  if (!station || (isOperator && !isOwner)) throw new NotFoundError('Station not found');
+  if (!isOwner && !isPubliclyVisible(station, await ownerIsActive(db, station))) {
     throw new NotFoundError('Station not found');
   }
 
@@ -120,6 +134,8 @@ async function listOperatorStations(ownerId) {
 }
 
 module.exports = {
+  isPubliclyVisible,
+  ownerIsActive,
   listStations,
   getStationDetail,
   assertOwnsStation,

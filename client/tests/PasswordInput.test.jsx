@@ -105,6 +105,10 @@ describe('where it is used', () => {
       </MemoryRouter>
     );
     expect(screen.getByRole('button', { name: 'Show password' })).toBeInTheDocument();
+    // Signup asks for the same 8-character minimum as the API, and says so.
+    const password = screen.getByLabelText('Password');
+    expect(password).toHaveAttribute('minLength', '8');
+    expect(password).toHaveAccessibleDescription('At least 8 characters.');
   });
 
   it('the Account page has one eye per field, each with its own name', async () => {

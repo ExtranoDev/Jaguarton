@@ -159,7 +159,7 @@ describe('operator booking filters', () => {
     const { driver, operator, slots } = await createScenario();
     const secondStation = await createStation(operator.id, { name: 'Second Station' });
     const secondCharger = await createCharger(secondStation.id);
-    const secondSlot = await createSlot(secondCharger.id, futureTime(1, 10));
+    const secondSlot = await createSlot(secondCharger.id, futureTime(1, 14)); // not overlapping slots[0]
     await book(driver, slots[0].id);
     const second = await book(driver, secondSlot.id);
     await request(app).patch(`/api/bookings/${second.body.booking.id}/cancel`).set(authHeader(driver));

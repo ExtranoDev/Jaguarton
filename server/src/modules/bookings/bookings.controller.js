@@ -12,21 +12,21 @@ const mine = asyncHandler(async (req, res) => {
 });
 
 const detail = asyncHandler(async (req, res) => {
-  const booking = await bookingsService.getBookingById(Number(req.params.id), req.user);
+  const booking = await bookingsService.getBookingById(req.params.id, req.user);
   res.status(200).json({ booking });
 });
 
 const cancel = asyncHandler(async (req, res) => {
-  const booking = await bookingsService.cancelBooking(Number(req.params.id), req.user.id);
+  const booking = await bookingsService.cancelBooking(req.params.id, req.user.id);
   res.status(200).json({ booking });
 });
 
 const operatorList = asyncHandler(async (req, res) => {
   const { stationId, chargerId, status } = req.query;
   const bookings = await bookingsService.listOperatorBookings(req.user.id, {
-    stationId: stationId ? Number(stationId) : undefined,
-    chargerId: chargerId ? Number(chargerId) : undefined,
-    status,
+    stationId: stationId || undefined,
+    chargerId: chargerId || undefined,
+    status: status || undefined,
   });
   res.status(200).json({ bookings });
 });

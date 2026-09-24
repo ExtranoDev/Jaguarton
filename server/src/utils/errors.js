@@ -35,6 +35,14 @@ class ConflictError extends AppError {
   }
 }
 
+// Carries how long to wait, which the error handler sends as a Retry-After header.
+class TooManyRequestsError extends AppError {
+  constructor(message = 'Too many requests', retryAfterSeconds = 60) {
+    super(message, 429);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 module.exports = {
   AppError,
   BadRequestError,
@@ -42,4 +50,5 @@ module.exports = {
   ForbiddenError,
   NotFoundError,
   ConflictError,
+  TooManyRequestsError,
 };

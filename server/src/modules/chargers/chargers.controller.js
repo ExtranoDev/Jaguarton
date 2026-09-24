@@ -3,7 +3,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 
 const create = asyncHandler(async (req, res) => {
   const { connectorType, powerKw, pricePerKwh, status } = req.body;
-  const charger = await chargersService.createCharger(Number(req.params.stationId), req.user.id, {
+  const charger = await chargersService.createCharger(req.params.stationId, req.user.id, {
     connectorType,
     powerKw,
     pricePerKwh,
@@ -14,7 +14,7 @@ const create = asyncHandler(async (req, res) => {
 
 const update = asyncHandler(async (req, res) => {
   const { connectorType, powerKw, pricePerKwh, status } = req.body;
-  const charger = await chargersService.updateCharger(Number(req.params.id), req.user.id, {
+  const charger = await chargersService.updateCharger(req.params.id, req.user.id, {
     connectorType,
     powerKw,
     pricePerKwh,
@@ -25,7 +25,7 @@ const update = asyncHandler(async (req, res) => {
 
 const updateStatus = asyncHandler(async (req, res) => {
   const charger = await chargersService.updateChargerStatus(
-    Number(req.params.id),
+    req.params.id,
     req.user.id,
     req.body.status
   );

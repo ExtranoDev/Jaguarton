@@ -1,5 +1,22 @@
 import L from 'leaflet';
 
+// Leaflet 1.9 finishes a zoom animation (fitBounds, flyTo, zoom buttons) from a 250 ms timer that
+// map.remove() doesn't cancel. Leaving a page mid-animation unmounts the map, and that timer then
+// runs against the removed map and throws "Cannot read properties of undefined (reading
+// '_leaflet_pos')". Once the map is gone (remove() deletes _mapPane) there is nothing to finish.
+const finishZoomAnimation = L.Map.prototype._onZoomTransitionEnd;
+if (!finishZoomAnimation.guardsRemovedMap) {
+  const guarded = function onZoomTransitionEnd(...args) {
+    if (!this._mapPane) {
+      this._animatingZoom = false;
+      return;
+    }
+    finishZoomAnimation.apply(this, args);
+  };
+  guarded.guardsRemovedMap = true;
+  L.Map.include({ _onZoomTransitionEnd: guarded });
+}
+
 export const LAGOS_CENTER = [6.51, 3.42];
 
 export function tileLayerProps() {

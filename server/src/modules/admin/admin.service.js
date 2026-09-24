@@ -10,6 +10,7 @@ const {
 const { isUniqueViolation } = require('../../utils/dbErrors');
 const { hashPassword, generateTemporaryPassword } = require('../../utils/password');
 const { detailedBookings } = require('../bookings/bookings.service');
+const { normalizeEmail } = require('../auth/auth.service');
 const { topUpSlots } = require('../slots/slots.service');
 const { buildSlotRows } = require('../slots/slotRows');
 
@@ -88,7 +89,8 @@ async function getOverview() {
 
 // How much of the next 7 days' (today included, in APP_TIMEZONE) bookable capacity is
 // booked. Capacity = booked slots + available slots on an online charger at an active
-// station; blocked slots and slots nobody could book don't count against it.
+// station whose operator isn't suspended; blocked slots and slots nobody could book don't
+// count against it.
 // Grouping by start time (not by slot) keeps this small however many chargers exist.
 async function getUtilisation() {
   const today = toZonedDateString(new Date());
@@ -96,10 +98,11 @@ async function getUtilisation() {
   const windowStart = dayBounds(dates[0]).start;
   const windowEnd = dayBounds(dates[dates.length - 1]).end;
 
-  const bookable = "CASE WHEN c.status = 'online' AND s.is_active THEN 1 ELSE 0 END";
+  const bookable = "CASE WHEN c.status = 'online' AND s.is_active AND owner.is_active THEN 1 ELSE 0 END";
   const rows = await db('slots as sl')
     .innerJoin('chargers as c', 'c.id', 'sl.charger_id')
     .innerJoin('stations as s', 's.id', 'c.station_id')
+    .innerJoin('users as owner', 'owner.id', 's.owner_id')
     .where('sl.start_time', '>=', windowStart.toISOString())
     .andWhere('sl.start_time', '<', windowEnd.toISOString())
     .select('sl.start_time', 'sl.status', db.raw(`${bookable} AS bookable`))
@@ -163,7 +166,8 @@ async function assertAnotherActiveAdmin(trx, targetId, message) {
   if (!activeAdmins.some((admin) => admin.id !== targetId)) throw new ConflictError(message);
 }
 
-async function createUser(adminId, { name, email, role, password }) {
+async function createUser(adminId, { name, email: rawEmail, role, password }) {
+  const email = normalizeEmail(rawEmail);
   const passwordHash = await hashPassword(password); // slow by design, so not inside the transaction
   return db.transaction(async (trx) => {
     if (await trx('users').where({ email }).first()) {
@@ -180,7 +184,8 @@ async function createUser(adminId, { name, email, role, password }) {
   });
 }
 
-async function updateUser(adminId, userId, { name, email, role }) {
+async function updateUser(adminId, userId, { name, email: rawEmail, role }) {
+  const email = normalizeEmail(rawEmail);
   return db.transaction(async (trx) => {
     const target = await trx('users').where({ id: userId }).first();
     if (!target) throw new NotFoundError('User not found');
@@ -211,9 +216,10 @@ async function updateUser(adminId, userId, { name, email, role }) {
     }
 
     try {
+      const revokeSessions = changes.role ? { token_version: trx.raw('token_version + 1') } : {};
       const [updated] = await trx('users')
         .where({ id: userId })
-        .update({ ...changes, updated_at: trx.fn.now() })
+        .update({ ...changes, ...revokeSessions, updated_at: trx.fn.now() })
         .returning('*');
       const summary = Object.keys(changes)
         .map((field) => (field === 'role' ? `role ${target.role} → ${role}` : `${field} changed`))
@@ -229,7 +235,7 @@ async function updateUser(adminId, userId, { name, email, role }) {
 
 // Sets a new password, either the one the admin typed or a generated temporary one. The
 // temporary password is returned once and never stored in readable form; the audit log records
-// only that a reset happened. (Sessions the user already has stay valid until they expire.)
+// only that a reset happened. Every session the user already has ends.
 async function resetUserPassword(adminId, userId, { password } = {}) {
   if (userId === adminId) {
     throw new BadRequestError('Use your account settings to change your own password');
@@ -240,7 +246,9 @@ async function resetUserPassword(adminId, userId, { password } = {}) {
   return db.transaction(async (trx) => {
     const target = await trx('users').where({ id: userId }).first();
     if (!target) throw new NotFoundError('User not found');
-    await trx('users').where({ id: userId }).update({ password_hash: passwordHash, updated_at: trx.fn.now() });
+    await trx('users')
+      .where({ id: userId })
+      .update({ password_hash: passwordHash, token_version: trx.raw('token_version + 1'), updated_at: trx.fn.now() });
     await recordAction(
       trx,
       adminId,
@@ -289,7 +297,8 @@ async function listStations() {
         's.is_active',
         's.owner_id',
         'u.name as owner_name',
-        'u.email as owner_email'
+        'u.email as owner_email',
+        'u.is_active as owner_active'
       )
       .orderBy('s.id'),
     db('chargers').orderBy('id'),
@@ -298,6 +307,7 @@ async function listStations() {
   return stations.map((station) => ({
     ...station,
     is_active: Boolean(station.is_active),
+    owner_active: Boolean(station.owner_active),
     chargers: chargers.filter((charger) => charger.station_id === station.id),
   }));
 }

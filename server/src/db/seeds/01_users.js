@@ -1,6 +1,17 @@
 const bcrypt = require('bcryptjs');
 
 exports.seed = async function seed(knex) {
+  // `npm run seed` starts by deleting every user, station and booking. In production that is almost
+  // certainly a mistake, so it needs an explicit yes. This file runs first, so nothing has been
+  // touched when it refuses.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DESTRUCTIVE_SEED !== 'yes') {
+    throw new Error(
+      'Refusing to run the full seed with NODE_ENV=production: it deletes every user, station and booking. ' +
+        'Use `npm run seed:admin` or `npm run seed:regions` to add data safely, or set ALLOW_DESTRUCTIVE_SEED=yes ' +
+        'if you really mean to wipe this database.'
+    );
+  }
+
   // Delete in FK-safe order (children before parents) so re-running the
   // seed is idempotent regardless of DB engine.
   await knex('admin_actions').del();

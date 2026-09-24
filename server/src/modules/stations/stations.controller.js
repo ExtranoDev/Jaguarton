@@ -1,28 +1,24 @@
 const stationsService = require('./stations.service');
 const asyncHandler = require('../../utils/asyncHandler');
 
-function parseFloatOrUndefined(value) {
-  if (value === undefined || value === null || value === '') return undefined;
-  const parsed = Number.parseFloat(value);
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
-
+// Query values are already validated and converted to numbers by the route.
 const list = asyncHandler(async (req, res) => {
+  const { lat, lng, radiusKm, minPrice, maxPrice, status, connectorType } = req.query;
   const filters = {
-    lat: parseFloatOrUndefined(req.query.lat),
-    lng: parseFloatOrUndefined(req.query.lng),
-    radiusKm: parseFloatOrUndefined(req.query.radiusKm),
-    minPrice: parseFloatOrUndefined(req.query.minPrice),
-    maxPrice: parseFloatOrUndefined(req.query.maxPrice),
-    status: req.query.status || undefined,
-    connectorType: req.query.connectorType || undefined,
+    lat: lat ?? undefined,
+    lng: lng ?? undefined,
+    radiusKm: radiusKm ?? undefined,
+    minPrice: minPrice ?? undefined,
+    maxPrice: maxPrice ?? undefined,
+    status: status || undefined,
+    connectorType: connectorType || undefined,
   };
   const stations = await stationsService.listStations(filters, req.user);
   res.status(200).json({ stations });
 });
 
 const detail = asyncHandler(async (req, res) => {
-  const station = await stationsService.getStationDetail(Number(req.params.id), req.user);
+  const station = await stationsService.getStationDetail(req.params.id, req.user);
   res.status(200).json({ station });
 });
 
@@ -34,7 +30,7 @@ const create = asyncHandler(async (req, res) => {
 
 const update = asyncHandler(async (req, res) => {
   const { name, address, lat, lng } = req.body;
-  const station = await stationsService.updateStation(Number(req.params.id), req.user.id, {
+  const station = await stationsService.updateStation(req.params.id, req.user.id, {
     name,
     address,
     lat,

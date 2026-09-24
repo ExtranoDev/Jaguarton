@@ -2,6 +2,8 @@ const db = require('../../config/db');
 const { NotFoundError, ConflictError, ForbiddenError } = require('../../utils/errors');
 const { isUniqueViolation } = require('../../utils/dbErrors');
 const { generateBookingReference } = require('../../utils/bookingReference');
+const { toIsoString } = require('../../utils/time');
+const { isPubliclyVisible, ownerIsActive } = require('../stations/stations.service');
 
 // Booking rows joined with the slot time, charger and station info that the
 // driver-facing screens need (the raw row only has foreign keys).
@@ -29,22 +31,41 @@ function detailedBookings(conn = db) {
 //      real gate — if it affects 0 rows, another request already won.
 //   3. A partial unique index on bookings(slot_id) WHERE status='confirmed'
 //      is a DB-level backstop independent of this code path.
+// The driver's own row is locked first too, so two bookings by one driver at once are checked for
+// overlap one after the other rather than both passing.
 async function createBooking({ slotId, userId }) {
   return db.transaction(async (trx) => {
+    await trx('users').where({ id: userId }).forUpdate().first();
     const slot = await trx('slots').where({ id: slotId }).forUpdate().first();
     if (!slot) throw new NotFoundError('Slot not found');
 
     const charger = await trx('chargers').where({ id: slot.charger_id }).first();
     if (!charger) throw new NotFoundError('Charger not found');
     const station = await trx('stations').where({ id: charger.station_id }).first();
-    if (!station || !station.is_active) {
+    if (!station || !isPubliclyVisible(station, await ownerIsActive(trx, station))) {
       throw new ConflictError('This station is not currently available for booking');
     }
     if (charger.status !== 'online') {
       throw new ConflictError('This charger is not currently available for booking');
     }
+    if (Date.parse(toIsoString(slot.start_time)) <= Date.now()) {
+      throw new ConflictError('This slot has already started and can no longer be booked');
+    }
     if (slot.status !== 'available') {
       throw new ConflictError('This slot is no longer available');
+    }
+
+    // One car can't charge in two places at once.
+    const clash = await trx('bookings as b')
+      .innerJoin('slots as sl', 'sl.id', 'b.slot_id')
+      .where('b.user_id', userId)
+      .andWhere('b.status', 'confirmed')
+      .andWhere('sl.start_time', '<', slot.end_time)
+      .andWhere('sl.end_time', '>', slot.start_time)
+      .select('b.booking_reference')
+      .first();
+    if (clash) {
+      throw new ConflictError(`You already have a booking at this time (${clash.booking_reference})`);
     }
 
     const affectedRows = await trx('slots')

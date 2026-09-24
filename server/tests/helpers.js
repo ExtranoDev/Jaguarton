@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../src/config/db');
 const { jwtSecret } = require('../src/config/env');
+const { resetLoginThrottle } = require('../src/utils/loginThrottle');
 const { zonedTimeToDate, toZonedDateString, addDaysToDateString } = require('../src/utils/time');
 
 async function setupDatabase() {
@@ -8,6 +9,7 @@ async function setupDatabase() {
 }
 
 async function resetDatabase() {
+  resetLoginThrottle();
   // Children before parents so FK constraints are satisfied.
   await db('admin_actions').del();
   await db('bookings').del();

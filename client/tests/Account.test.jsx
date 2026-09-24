@@ -23,7 +23,7 @@ function mockAccountApi() {
     http.post(`${API}/auth/change-password`, async ({ request }) => {
       const body = await request.json();
       state.requests.password = body;
-      return HttpResponse.json({ message: 'Password updated' });
+      return HttpResponse.json({ message: 'Password updated', token: 'fresh-token' });
     })
   );
   return state;
@@ -63,7 +63,7 @@ describe('account page', () => {
     expect(screen.getAllByText('Chidi N. Nwosu').length).toBeGreaterThan(0); // navbar shows it too
   });
 
-  it('changes the password and clears the form', async () => {
+  it('changes the password, keeps this session with the fresh token, and clears the form', async () => {
     const user = userEvent.setup();
     const state = mockAccountApi();
     renderAccount();
@@ -78,6 +78,7 @@ describe('account page', () => {
 
     expect(await screen.findByText('Your password has been changed.')).toBeInTheDocument();
     expect(state.requests.password).toEqual({ currentPassword: 'old-password', newPassword: 'brand-new-pass' });
+    expect(localStorage.getItem('echargefind_token')).toBe('fresh-token'); // the old token no longer works
     expect(screen.getByLabelText('Current password')).toHaveValue('');
     expect(screen.getByLabelText('New password')).toHaveValue('');
   });

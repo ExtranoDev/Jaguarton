@@ -159,14 +159,17 @@ describe('admin: edit user', () => {
     expect(entry).toMatchObject({ action: 'user.update', target: `user:${ada.id}`, reason: 'name changed; email changed' });
   });
 
-  it('changes a role where nothing depends on the old one, and the user gets the new powers', async () => {
+  it('changes a role where nothing depends on the old one; the old session ends and the next one has the new powers', async () => {
     const boss = await createAdmin();
     const ada = await signUp();
 
     const res = await admin(boss, 'put', `/users/${ada.id}`, { name: ada.name, email: ada.email, role: 'operator' });
 
     expect(res.status).toBe(200);
-    expect((await request(app).get('/api/operator/stations').set({ Authorization: `Bearer ${ada.token}` })).status).toBe(200);
+    expect((await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${ada.token}` })).status).toBe(401);
+    const again = await login(ada.email, 'first-password');
+    expect(again.status).toBe(200);
+    expect((await request(app).get('/api/operator/stations').set({ Authorization: `Bearer ${again.body.token}` })).status).toBe(200);
     expect((await auditRows())[0].reason).toBe('role driver → operator');
   });
 
