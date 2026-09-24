@@ -52,7 +52,7 @@ Log in as an admin and you land on `/admin`. Admins can't sign up; the account c
 | --- | --- |
 | Overview | Counts of users, stations, chargers and bookings, and slot utilisation for the next 7 days. No revenue figures |
 | Users | Search and filter accounts. **Add user**, **Edit** (name, email, role), **Reset password** (a generated temporary one, shown once, or one you type), and **Suspend** (with confirmation and a reason) or reactivate. Suspension takes effect immediately, even for a token already issued, and blocks login |
-| Stations | Deactivate (with confirmation and a reason) or reactivate a station, and set any charger online / offline / unavailable |
+| Stations | Filter by **Pending approval**, Approved, Rejected or Archived. **Approve** a new station, or **Reject** it with a reason the operator sees. Deactivate (with confirmation and a reason) or reactivate a station, and set any charger online / offline / unavailable |
 | Bookings | Filter by status, station and slot date. **Cancel** a booking; a written reason is required, and the slot is freed |
 | Slot coverage | Which chargers have days with no slots in the next 7 / 14 / 30 days, and a button to fill the gaps |
 | Audit log | Everything recorded (see below), filtered by who, kind, action, target and date range, 50 to a page with no limit on how far back you can go. Each entry shows the date with the year and the time in Lagos time, who did it, the target, the reason, what changed (before → after) and the IP address |
@@ -63,6 +63,8 @@ Rules worth knowing:
 
 - An admin can't suspend themselves, and the last active admin can't be suspended (two admins suspending each other at once can't leave zero).
 - A deactivated station disappears from the map, its detail page and its slot list, and can't be booked (409). Bookings that already exist stay confirmed; cancel them from the Bookings tab. The operator still sees the station, flagged as deactivated.
+- **New stations need approval.** A station an operator adds is *pending* and hidden from drivers until an admin approves it (the overview counts how many are waiting). A rejected station shows the admin's reason to its operator; editing it sends it back for approval. Stations that existed before this rule, and seeded ones, are approved.
+- **Taking a charger offline or unavailable while drivers are booked on it asks first.** The API answers 409 (`code: CONFIRM_REQUIRED`, with `upcomingBookings`) unless the request says `confirm: true`, for operators and admins alike. The bookings stay confirmed, and the audit log records how many there were.
 - Suspending an operator hides all of their stations from drivers (map, detail page, slot lists) and makes them unbookable (409), exactly like deactivating each one. Their existing bookings stay confirmed; cancel them from the Bookings tab if needed. The Stations tab's data carries `owner_active` for each station.
 - Utilisation is booked slots ÷ (booked + open slots on online chargers at active stations whose operator isn't suspended). Blocked slots don't count.
 - A coverage "gap" is a day with no slots at all, and today only counts while a default slot could still be created for it.
@@ -108,6 +110,11 @@ Anything outside these is a 400 with a message saying which field is wrong (neve
 ## Finding and adding stations
 
 - **Drivers:** the map fits every station (all three states) and follows the list as you filter. Search by name or town (it deliberately ignores street names, so "Ogun" doesn't find Ogunsanya Street), **Near me** sorts by distance, and each station has **Get directions** (opens your maps app).
+- **Operators managing stations:**
+  - **Edit station** changes the name, address and location.
+  - **Slots: block or unblock** on each charger shows its slots for the next 7 days. Block one so nobody can book it; booked and already-started slots can't be changed.
+  - **Archive** a station or a charger to take it out of service. Drivers stop seeing it and it can't be booked, but its bookings and history are kept and **Restore** brings it back. Something with upcoming bookings can't be archived until those are cancelled.
+  - **Cancel** an upcoming booking from the station's Bookings tab, with a reason (at least 5 characters) that the audit log keeps. The slot is freed. On phones the bookings list shows one card per booking.
 - **Operators adding a station:** the location map is large (about 60% of the screen height, full width, and full screen on request). Search an address, use your location, click the map, or drag the pin. Address search uses MapTiler when `VITE_MAPTILER_KEY` is set, and OpenStreetMap otherwise.
 - **When the API is asleep** (the free host sleeps when idle), the app shows a banner instead of failing silently, retries reads, and the login page says it can't reach the server rather than blaming your password.
 
@@ -146,6 +153,8 @@ Do these in order. The API needs the database first, and the web app needs the A
 7. Log in on the Vercel URL and run through both demo journeys.
 
 ### Updating a database that already exists
+
+**Station approval and archiving (migration `20260101000012_station_approval_and_archiving`).** This adds `stations.approval_status` (every existing station becomes `approved`), `stations.review_note`, and `archived_at` on stations and chargers (empty for all). No data changes. Render runs it on deploy.
 
 **Audit log (migration `20260101000011_create_audit_log`).** This creates `audit_log`, copies every existing `admin_actions` row into it (resolving the admin's and the target's names and emails at that moment), and drops `admin_actions`. Render runs it on deploy.
 

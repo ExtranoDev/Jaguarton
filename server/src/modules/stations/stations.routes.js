@@ -39,5 +39,14 @@ router.get('/operator/stations', requireAuth, requireRole('operator'), controlle
 router.get('/stations/:id', [idParam()], validate, optionalAuth, controller.detail);
 router.post('/stations', requireAuth, requireRole('operator'), stationValidators, validate, controller.create);
 router.put('/stations/:id', requireAuth, requireRole('operator'), [idParam(), ...stationValidators], validate, controller.update);
+// Archive ({ archived: true }) or restore ({ archived: false }) one of your stations.
+router.patch(
+  '/stations/:id/archive',
+  requireAuth,
+  requireRole('operator'),
+  [idParam(), body('archived').custom((value) => typeof value === 'boolean').withMessage('archived must be true or false')],
+  validate,
+  controller.archive
+);
 
 module.exports = router;

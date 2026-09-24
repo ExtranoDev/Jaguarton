@@ -11,6 +11,23 @@ const DOT_COLORS = {
   unavailable: 'bg-terracotta',
 };
 
+// What the operator needs to know about a station at a glance.
+function StationBadges({ station }) {
+  const badges = [];
+  if (station.archived) badges.push('archived');
+  else if (station.approval_status === 'pending') badges.push('pending');
+  else if (station.approval_status === 'rejected') badges.push('rejected');
+  if (station.is_active === false) badges.push('deactivated');
+  if (badges.length === 0) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {badges.map((badge) => (
+        <StatusBadge key={badge} status={badge} />
+      ))}
+    </span>
+  );
+}
+
 export default function OperatorDashboardPage() {
   const [stations, setStations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -55,7 +72,10 @@ export default function OperatorDashboardPage() {
   }
 
   const selected = stations.find((s) => s.id === selectedId) || null;
-  const chargerCount = stations.reduce((total, s) => total + s.chargers.length, 0);
+  // Archived stations go to the bottom of the list.
+  const orderedStations = [...stations].sort((a, b) => Number(Boolean(a.archived)) - Number(Boolean(b.archived)));
+  const liveChargers = (station) => station.chargers.filter((c) => !c.archived);
+  const chargerCount = stations.reduce((total, s) => total + liveChargers(s).length, 0);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-paper">
@@ -93,7 +113,7 @@ export default function OperatorDashboardPage() {
                   You haven&apos;t registered a station yet.
                 </p>
               )}
-              {stations.map((station) => {
+              {orderedStations.map((station) => {
                 const isSelected = !addingStation && station.id === selectedId;
                 return (
                   <button
@@ -109,15 +129,11 @@ export default function OperatorDashboardPage() {
                     }`}
                   >
                     <span className="block text-sm font-semibold text-ink">{station.name}</span>
-                    {station.is_active === false && (
-                      <span className="mt-1 block">
-                        <StatusBadge status="deactivated" />
-                      </span>
-                    )}
+                    <StationBadges station={station} />
                     <span className="mb-2 mt-1 block text-xs text-ink-2">{station.address}</span>
-                    <span className="flex gap-1.5" aria-label={`${station.chargers.length} chargers`}>
-                      {station.chargers.length === 0 && <span className="text-[11px] text-ink-2">No chargers yet</span>}
-                      {station.chargers.map((charger) => (
+                    <span className="flex gap-1.5" aria-label={`${liveChargers(station).length} chargers`}>
+                      {liveChargers(station).length === 0 && <span className="text-[11px] text-ink-2">No chargers yet</span>}
+                      {liveChargers(station).map((charger) => (
                         <span
                           key={charger.id}
                           title={charger.status}

@@ -199,3 +199,23 @@ describe('migration 11: audit_log replaces admin_actions', () => {
     expect(await db('audit_log')).toHaveLength(2);
   });
 });
+
+describe('migration 12: station approval and archiving', () => {
+  const MIGRATION = '20260101000012_station_approval_and_archiving.js';
+
+  it('leaves every existing station approved and nothing archived, and rolls back cleanly', async () => {
+    const { station, charger } = await createScenario();
+    try {
+      await db.migrate.down({ name: MIGRATION });
+      expect(await db.schema.hasColumn('stations', 'approval_status')).toBe(false);
+      expect(await db.schema.hasColumn('chargers', 'archived_at')).toBe(false);
+      expect(await db('stations').where({ id: station.id })).toHaveLength(1);
+      expect(await db('chargers').where({ id: charger.id })).toHaveLength(1);
+    } finally {
+      await db.migrate.latest();
+    }
+    expect(await db('stations').where({ id: station.id }).first()).toMatchObject({ approval_status: 'approved', review_note: null, archived_at: null });
+    expect((await db('chargers').where({ id: charger.id }).first()).archived_at).toBeNull();
+    await db.migrate.latest(); // re-running is a no-op
+  });
+});

@@ -19,6 +19,9 @@ const {
   appDateString,
 } = require('./helpers');
 
+// Several tests make 10-20 real logins, each a deliberately slow bcrypt check plus an audit write.
+jest.setTimeout(20000);
+
 beforeAll(setupDatabase);
 beforeEach(resetDatabase);
 afterAll(teardownDatabase);
@@ -263,7 +266,7 @@ describe('admin audit log', () => {
     const booking = (await call('post', '/api/bookings', driver, { slotId: slots[0].id })).body.booking;
     await call('patch', `/api/admin/users/${driver.id}`, admin, { isActive: false, reason: 'Chargeback fraud' });
     await call('patch', `/api/admin/stations/${station.id}`, admin, { isActive: false, reason: 'Flooded site' });
-    await call('patch', `/api/admin/chargers/${charger.id}/status`, admin, { status: 'unavailable' });
+    await call('patch', `/api/admin/chargers/${charger.id}/status`, admin, { status: 'unavailable', confirm: true }); // the driver is booked on it
     await call('patch', `/api/admin/bookings/${booking.id}/cancel`, admin, { reason: 'Site closed for repairs' });
     await call('post', '/api/admin/slots/top-up', admin, { days: 1 });
     return { admin, driver, station, charger, booking };
@@ -286,7 +289,11 @@ describe('admin audit log', () => {
     const [topUp, cancel, status, , suspend, created] = res.body.entries;
     expect(topUp).toMatchObject({ category: 'admin', actor: { name: 'Admin One', email: 'admin1@test.dev', role: 'admin' }, target: { name: 'All chargers' } });
     expect(cancel).toMatchObject({ category: 'booking', reason: 'Site closed for repairs', target: { name: booking.booking_reference, email: 'driver1@test.dev' } });
-    expect(status).toMatchObject({ target: { name: `Charger #${charger.id} · Test Station` }, changes: { status: { from: 'online', to: 'unavailable' } } });
+    expect(status).toMatchObject({
+      target: { name: `Charger #${charger.id} · Test Station` },
+      changes: { status: { from: 'online', to: 'unavailable' } },
+      details: { upcomingBookings: 1 },
+    });
     expect(suspend).toMatchObject({ target: { id: driver.id, name: 'Driver One', email: 'driver1@test.dev' }, ip: '203.0.113.50', user_agent: UA });
     expect(created.actor).toMatchObject({ role: 'driver', name: 'Driver One' });
     expect(new Date(topUp.created_at).toISOString()).toBe(topUp.created_at);

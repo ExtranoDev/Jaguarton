@@ -41,7 +41,7 @@ const setUserActive = asyncHandler(async (req, res) => {
 });
 
 const listStations = asyncHandler(async (req, res) => {
-  res.status(200).json({ stations: await adminService.listStations() });
+  res.status(200).json({ stations: await adminService.listStations({ approval: req.query.approval || undefined }) });
 });
 
 const setStationActive = asyncHandler(async (req, res) => {
@@ -50,8 +50,14 @@ const setStationActive = asyncHandler(async (req, res) => {
 });
 
 const setChargerStatus = asyncHandler(async (req, res) => {
-  const charger = await adminService.setChargerStatus(req.user.id, Number(req.params.id), req.body.status, contextFrom(req));
+  const charger = await adminService.setChargerStatus(req.user.id, Number(req.params.id), req.body.status, { confirm: req.body.confirm }, contextFrom(req));
   res.status(200).json({ charger });
+});
+
+const reviewStation = asyncHandler(async (req, res) => {
+  const { decision, reason } = req.body;
+  const station = await adminService.reviewStation(req.user.id, Number(req.params.id), { decision, reason }, contextFrom(req));
+  res.status(200).json({ station });
 });
 
 const listBookings = asyncHandler(async (req, res) => {
@@ -104,6 +110,7 @@ module.exports = {
   listStations,
   setStationActive,
   setChargerStatus,
+  reviewStation,
   listBookings,
   cancelBooking,
   slotCoverage,

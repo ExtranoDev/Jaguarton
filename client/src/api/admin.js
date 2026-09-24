@@ -19,8 +19,9 @@ export async function setUserActive(id, isActive, reason) {
   return data.user;
 }
 
-export async function listStations() {
-  const { data } = await client.get('/admin/stations');
+// approval: '' (all), 'pending', 'approved', 'rejected' or 'archived'.
+export async function listStations({ approval } = {}) {
+  const { data } = await client.get('/admin/stations', { params: clean({ approval }) });
   return data.stations;
 }
 
@@ -30,9 +31,16 @@ export async function setStationActive(id, isActive, reason) {
   return data.station;
 }
 
-export async function setChargerStatus(id, status) {
-  const { data } = await client.patch(`/admin/chargers/${id}/status`, { status });
+// Like the operator's: pass confirm = true after a 409 CONFIRM_REQUIRED.
+export async function setChargerStatus(id, status, confirm = false) {
+  const { data } = await client.patch(`/admin/chargers/${id}/status`, confirm ? { status, confirm } : { status });
   return data.charger;
+}
+
+// decision: 'approve' | 'reject' (a reject needs a reason).
+export async function reviewStation(id, decision, reason) {
+  const { data } = await client.patch(`/admin/stations/${id}/approval`, clean({ decision, reason }));
+  return data.station;
 }
 
 export async function listBookings({ status, stationId, date } = {}) {

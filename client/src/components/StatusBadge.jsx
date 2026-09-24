@@ -10,6 +10,13 @@ const STYLES = {
   driver: 'bg-sage-tint text-ink-2',
   operator: 'bg-sage-tint text-ink-2',
   admin: 'bg-volt text-volt-ink',
+  pending: 'bg-volt text-volt-ink',
+  rejected: 'bg-terracotta-tint text-terracotta',
+  approved: 'bg-green-tint text-green-dark',
+  archived: 'bg-sage-tint text-ink-2',
+  available: 'bg-green-tint text-green-dark',
+  booked: 'bg-sage-tint text-ink-2',
+  blocked: 'bg-terracotta-tint text-terracotta',
 };
 
 const LABELS = {
@@ -24,6 +31,13 @@ const LABELS = {
   driver: 'Driver',
   operator: 'Operator',
   admin: 'Admin',
+  pending: 'Pending approval',
+  rejected: 'Rejected',
+  approved: 'Approved',
+  archived: 'Archived',
+  available: 'Open',
+  booked: 'Booked',
+  blocked: 'Blocked',
 };
 
 export default function StatusBadge({ status }) {

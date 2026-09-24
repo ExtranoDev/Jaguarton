@@ -35,9 +35,14 @@ const update = asyncHandler(async (req, res) => {
   res.status(200).json({ station });
 });
 
+const archive = asyncHandler(async (req, res) => {
+  const station = await stationsService.setStationArchived(req.params.id, req.user.id, req.body.archived, contextFrom(req));
+  res.status(200).json({ station });
+});
+
 const mine = asyncHandler(async (req, res) => {
   const stations = await stationsService.listOperatorStations(req.user.id);
   res.status(200).json({ stations });
 });
 
-module.exports = { list, detail, create, update, mine };
+module.exports = { list, detail, create, update, archive, mine };

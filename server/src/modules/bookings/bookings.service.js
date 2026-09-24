@@ -46,7 +46,7 @@ async function createBooking({ slotId, userId }, context = {}) {
     if (!station || !isPubliclyVisible(station, await ownerIsActive(trx, station))) {
       throw new ConflictError('This station is not currently available for booking');
     }
-    if (charger.status !== 'online') {
+    if (charger.status !== 'online' || charger.archived_at != null) {
       throw new ConflictError('This charger is not currently available for booking');
     }
     if (Date.parse(toIsoString(slot.start_time)) <= Date.now()) {
@@ -145,6 +145,26 @@ async function cancelBooking(bookingId, userId, context = {}) {
   });
 }
 
+// An operator cancelling a booking at one of their stations, with a reason the driver's booking
+// history and the audit log keep. Only bookings that haven't started can be cancelled.
+async function cancelBookingAsOperator(bookingId, ownerId, reason, context = {}) {
+  const why = audit.requireReason(reason, 'cancel a booking');
+  return db.transaction(async (trx) => {
+    const booking = await trx('bookings').where({ id: bookingId }).first();
+    const station = booking && (await trx('stations').where({ id: booking.station_id }).first());
+    // Someone else's booking is a 404, like someone else's station.
+    if (!booking || station?.owner_id !== ownerId) throw new NotFoundError('Booking not found');
+    if (booking.status === 'confirmed') {
+      const slot = await trx('slots').where({ id: booking.slot_id }).first();
+      if (Date.parse(toIsoString(slot.start_time)) <= Date.now()) {
+        throw new ConflictError('This booking has already started and can no longer be cancelled');
+      }
+    }
+    await cancelConfirmed(trx, booking, { context, reason: why });
+    return detailedBookings(trx).where('b.id', bookingId).first();
+  });
+}
+
 async function getBookingById(bookingId, requester) {
   const booking = await detailedBookings().where('b.id', bookingId).first();
   if (!booking) throw new NotFoundError('Booking not found');
@@ -180,6 +200,7 @@ module.exports = {
   createBooking,
   cancelBooking,
   cancelConfirmed,
+  cancelBookingAsOperator,
   getBookingById,
   listMyBookings,
   listOperatorBookings,

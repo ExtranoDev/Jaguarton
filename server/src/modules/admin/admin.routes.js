@@ -67,12 +67,28 @@ router.post(
 );
 router.patch('/admin/users/:id', [idParam, isActiveBody, reasonBody], validate, controller.setUserActive);
 
-router.get('/admin/stations', controller.listStations);
+router.get(
+  '/admin/stations',
+  [oneOf(query, 'approval', ['pending', 'approved', 'rejected', 'archived']).optional({ values: 'falsy' })],
+  validate,
+  controller.listStations
+);
+// Approve or reject (with a reason) a station waiting for approval.
+router.patch(
+  '/admin/stations/:id/approval',
+  [idParam, oneOf(body, 'decision', ['approve', 'reject']), reasonBody],
+  validate,
+  controller.reviewStation
+);
 router.patch('/admin/stations/:id', [idParam, isActiveBody, reasonBody], validate, controller.setStationActive);
 
 router.patch(
   '/admin/chargers/:id/status',
-  [idParam, oneOf(body, 'status', ['online', 'offline', 'unavailable'])],
+  [
+    idParam,
+    oneOf(body, 'status', ['online', 'offline', 'unavailable']),
+    body('confirm').optional().custom((value) => typeof value === 'boolean').withMessage('confirm must be true or false'),
+  ],
   validate,
   controller.setChargerStatus
 );

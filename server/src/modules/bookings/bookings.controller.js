@@ -22,6 +22,11 @@ const cancel = asyncHandler(async (req, res) => {
   res.status(200).json({ booking });
 });
 
+const operatorCancel = asyncHandler(async (req, res) => {
+  const booking = await bookingsService.cancelBookingAsOperator(req.params.id, req.user.id, req.body.reason, contextFrom(req));
+  res.status(200).json({ booking });
+});
+
 const operatorList = asyncHandler(async (req, res) => {
   const { stationId, chargerId, status } = req.query;
   const bookings = await bookingsService.listOperatorBookings(req.user.id, {
@@ -32,4 +37,4 @@ const operatorList = asyncHandler(async (req, res) => {
   res.status(200).json({ bookings });
 });
 
-module.exports = { create, mine, detail, cancel, operatorList };
+module.exports = { create, mine, detail, cancel, operatorList, operatorCancel };

@@ -3,8 +3,14 @@ import LocationPicker from './LocationPicker.jsx';
 
 const round6 = (value) => Math.round(value * 1e6) / 1e6;
 
-export default function AddStationForm({ submitting, error, onSubmit, onCancel }) {
-  const [form, setForm] = useState({ name: '', address: '', lat: '', lng: '' });
+// Adding a station, or editing one when `station` is given (its values fill the form).
+export default function AddStationForm({ submitting, error, onSubmit, onCancel, station = null }) {
+  const editing = Boolean(station);
+  const [form, setForm] = useState(
+    editing
+      ? { name: station.name, address: station.address, lat: String(station.lat), lng: String(station.lng) }
+      : { name: '', address: '', lat: '', lng: '' }
+  );
 
   const lat = form.lat === '' ? null : Number(form.lat);
   const lng = form.lng === '' ? null : Number(form.lng);
@@ -20,9 +26,15 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
   return (
     <form onSubmit={handleSubmit} className="flex min-w-0 flex-grow flex-col gap-5">
       <div>
-        <h2 className="font-display text-xl font-semibold text-ink">Add a station</h2>
+        <h2 className="font-display text-xl font-semibold text-ink">{editing ? `Edit ${station.name}` : 'Add a station'}</h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          Register the location first — you&apos;ll add its chargers next.
+          {editing
+            ? station.approval_status === 'rejected'
+              ? 'Saving sends it back to an admin for approval.'
+              : station.approval_status === 'pending'
+                ? 'It is still waiting for an admin to approve it.'
+                : 'Drivers see the changes straight away.'
+            : 'Register the location first — you’ll add its chargers next. An admin approves new stations before drivers can see them.'}
         </p>
       </div>
 
@@ -111,7 +123,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel }
           disabled={!valid || submitting}
           className="rounded-lg bg-green px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {submitting ? 'Creating…' : 'Create station'}
+          {editing ? (submitting ? 'Saving…' : 'Save changes') : submitting ? 'Creating…' : 'Create station'}
         </button>
         <button
           type="button"

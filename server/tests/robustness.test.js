@@ -23,6 +23,9 @@ const {
   appDateString,
 } = require('./helpers');
 
+// Several tests make 10-20 real logins, each a deliberately slow bcrypt check plus an audit write.
+jest.setTimeout(20000);
+
 beforeAll(setupDatabase);
 beforeEach(resetDatabase);
 afterAll(teardownDatabase);
@@ -271,7 +274,12 @@ describe('emails are case-insensitive', () => {
 
   it('is enforced by the database too (unique index on lower(email))', async () => {
     await createUser({ name: 'A', email: 'same@test.dev', role: 'driver' });
-    await expect(createUser({ name: 'B', email: 'SAME@test.dev', role: 'driver' })).rejects.toThrow();
+    // Checked by message, not with toThrow(): better-sqlite3's error class comes from whichever test
+    // file loaded the native module first in this Jest worker, so it can fail an instanceof Error check.
+    await expect(createUser({ name: 'B', email: 'SAME@test.dev', role: 'driver' })).rejects.toHaveProperty(
+      'message',
+      expect.stringMatching(/users_email_lower_unique/)
+    );
   });
 });
 

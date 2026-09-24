@@ -11,6 +11,8 @@ const { isUniqueViolation } = require('../../utils/dbErrors');
 const { hashPassword, generateTemporaryPassword } = require('../../utils/password');
 const { detailedBookings, cancelConfirmed } = require('../bookings/bookings.service');
 const audit = require('../audit/audit.service');
+const { changeChargerStatus } = require('../chargers/chargers.service');
+const { toStation, toCharger } = require('../stations/stations.service');
 const { normalizeEmail } = require('../auth/auth.service');
 const { topUpSlots } = require('../slots/slots.service');
 const { buildSlotRows } = require('../slots/slotRows');
@@ -28,7 +30,7 @@ const count = (row) => Number(row?.n || 0);
 async function getOverview() {
   const [userRows, stationRows, chargerRows, bookingRows, upcomingRow, utilisation] = await Promise.all([
     db('users').select('role', 'is_active').count('* as n').groupBy('role', 'is_active'),
-    db('stations').select('is_active').count('* as n').groupBy('is_active'),
+    db('stations').select('is_active', 'approval_status').count('* as n').groupBy('is_active', 'approval_status'),
     db('chargers').select('status').count('* as n').groupBy('status'),
     db('bookings').select('status').count('* as n').groupBy('status'),
     db('bookings as b')
@@ -49,6 +51,7 @@ async function getOverview() {
 
   const stationsActive = stationRows.filter((r) => r.is_active).reduce((sum, r) => sum + count(r), 0);
   const stationsTotal = stationRows.reduce((sum, r) => sum + count(r), 0);
+  const stationsPending = stationRows.filter((r) => r.approval_status === 'pending').reduce((sum, r) => sum + count(r), 0);
 
   const chargersByStatus = { online: 0, offline: 0, unavailable: 0 };
   for (const row of chargerRows) chargersByStatus[row.status] += count(row);
@@ -64,7 +67,7 @@ async function getOverview() {
       admins: usersByRole.admin,
       suspended,
     },
-    stations: { total: stationsTotal, active: stationsActive, inactive: stationsTotal - stationsActive },
+    stations: { total: stationsTotal, active: stationsActive, inactive: stationsTotal - stationsActive, pending: stationsPending },
     chargers: {
       total: chargersByStatus.online + chargersByStatus.offline + chargersByStatus.unavailable,
       ...chargersByStatus,
@@ -79,9 +82,9 @@ async function getOverview() {
 }
 
 // How much of the next 7 days' (today included, in APP_TIMEZONE) bookable capacity is
-// booked. Capacity = booked slots + available slots on an online charger at an active
-// station whose operator isn't suspended; blocked slots and slots nobody could book don't
-// count against it.
+// booked. Capacity = booked slots + available slots that drivers could book: an online, unarchived
+// charger at an active, approved, unarchived station whose operator isn't suspended. Blocked slots
+// and slots nobody could book don't count against it.
 // Grouping by start time (not by slot) keeps this small however many chargers exist.
 async function getUtilisation() {
   const today = toZonedDateString(new Date());
@@ -89,7 +92,8 @@ async function getUtilisation() {
   const windowStart = dayBounds(dates[0]).start;
   const windowEnd = dayBounds(dates[dates.length - 1]).end;
 
-  const bookable = "CASE WHEN c.status = 'online' AND s.is_active AND owner.is_active THEN 1 ELSE 0 END";
+  const bookable =
+    "CASE WHEN c.status = 'online' AND c.archived_at IS NULL AND s.is_active AND s.approval_status = 'approved' AND s.archived_at IS NULL AND owner.is_active THEN 1 ELSE 0 END";
   const rows = await db('slots as sl')
     .innerJoin('chargers as c', 'c.id', 'sl.charger_id')
     .innerJoin('stations as s', 's.id', 'c.station_id')
@@ -294,32 +298,66 @@ async function setUserActive(adminId, userId, isActive, reason, context = {}) {
 
 // ---------------------------------------------------------------- stations
 
-async function listStations() {
-  const [stations, chargers] = await Promise.all([
-    db('stations as s')
-      .innerJoin('users as u', 'u.id', 's.owner_id')
-      .select(
-        's.id',
-        's.name',
-        's.address',
-        's.lat',
-        's.lng',
-        's.is_active',
-        's.owner_id',
-        'u.name as owner_name',
-        'u.email as owner_email',
-        'u.is_active as owner_active'
-      )
-      .orderBy('s.id'),
-    db('chargers').orderBy('id'),
-  ]);
+// `approval`: 'pending' | 'approved' | 'rejected' to list only those; 'archived' for archived ones.
+// Pending stations come first, oldest first, so the queue reads in order.
+async function listStations({ approval } = {}) {
+  let query = db('stations as s')
+    .innerJoin('users as u', 'u.id', 's.owner_id')
+    .select(
+      's.id',
+      's.name',
+      's.address',
+      's.lat',
+      's.lng',
+      's.is_active',
+      's.approval_status',
+      's.review_note',
+      's.archived_at',
+      's.created_at',
+      's.owner_id',
+      'u.name as owner_name',
+      'u.email as owner_email',
+      'u.is_active as owner_active'
+    )
+    .orderByRaw("CASE WHEN s.approval_status = 'pending' THEN 0 ELSE 1 END")
+    .orderBy('s.id');
+  if (approval === 'archived') query = query.whereNotNull('s.archived_at');
+  else if (approval) query = query.where('s.approval_status', approval);
 
+  const [stations, chargers] = await Promise.all([query, db('chargers').orderBy('id')]);
   return stations.map((station) => ({
-    ...station,
-    is_active: Boolean(station.is_active),
+    ...toStation(station),
+    created_at: toIsoString(station.created_at),
     owner_active: Boolean(station.owner_active),
-    chargers: chargers.filter((charger) => charger.station_id === station.id),
+    chargers: chargers.filter((charger) => charger.station_id === station.id).map(toCharger),
   }));
+}
+
+// Approve a pending (or previously rejected) station so drivers can see it, or reject it with a
+// reason the operator is shown. The operator can edit a rejected station, which resubmits it.
+async function reviewStation(adminId, stationId, { decision, reason }, context = {}) {
+  const approve = decision === 'approve';
+  const why = approve ? reason?.trim() || null : audit.requireReason(reason, 'reject a station');
+  return db.transaction(async (trx) => {
+    const station = await trx('stations').where({ id: stationId }).first();
+    if (!station) throw new NotFoundError('Station not found');
+    const status = approve ? 'approved' : 'rejected';
+    if (station.approval_status === status) return toStation(station);
+
+    const [updated] = await trx('stations')
+      .where({ id: stationId })
+      .update({ approval_status: status, review_note: approve ? null : why, updated_at: trx.fn.now() })
+      .returning('*');
+    await audit.record(trx, {
+      action: approve ? 'station.approve' : 'station.reject',
+      context,
+      target: audit.stationTarget(updated),
+      ...audit.atStation(updated),
+      reason: why,
+      changes: audit.diff(station, updated, ['approval_status']),
+    });
+    return toStation(updated);
+  });
 }
 
 // Deactivating needs a reason; reactivating takes one optionally.
@@ -346,25 +384,13 @@ async function setStationActive(adminId, stationId, isActive, reason, context = 
   });
 }
 
-async function setChargerStatus(adminId, chargerId, status, context = {}) {
+// Like the operator's: taking a charger with upcoming bookings offline needs confirm: true.
+async function setChargerStatus(adminId, chargerId, status, { confirm = false } = {}, context = {}) {
   return db.transaction(async (trx) => {
     const charger = await trx('chargers').where({ id: chargerId }).first();
     if (!charger) throw new NotFoundError('Charger not found');
-    if (charger.status === status) return charger;
-
-    const [updated] = await trx('chargers')
-      .where({ id: chargerId })
-      .update({ status, updated_at: trx.fn.now() })
-      .returning('*');
     const station = await trx('stations').where({ id: charger.station_id }).first();
-    await audit.record(trx, {
-      action: 'charger.status',
-      context,
-      target: audit.chargerTarget(charger, station),
-      ...audit.atStation(station),
-      changes: audit.diff(charger, updated, ['status']),
-    });
-    return updated;
+    return changeChargerStatus(trx, { charger, station, status, confirm, context });
   });
 }
 
@@ -436,6 +462,8 @@ async function getSlotCoverage({ days = 7 } = {}) {
   const rows = await db('chargers as c')
     .innerJoin('stations as s', 's.id', 'c.station_id')
     .leftJoin(windowSlots, 'sl.charger_id', 'c.id')
+    .whereNull('c.archived_at')
+    .whereNull('s.archived_at')
     .select(
       'c.id as charger_id',
       'c.connector_type',
@@ -506,6 +534,7 @@ module.exports = {
   setUserActive,
   listStations,
   setStationActive,
+  reviewStation,
   setChargerStatus,
   listBookings,
   cancelBooking,

@@ -153,6 +153,7 @@ export default function OverviewTab() {
             <StatTile label="Active stations" value={overview.stations.active}>
               of {overview.stations.total}
               {overview.stations.inactive > 0 && <span className="block text-terracotta">{overview.stations.inactive} deactivated</span>}
+              {overview.stations.pending > 0 && <span className="block font-semibold text-ink">{overview.stations.pending} waiting for approval</span>}
             </StatTile>
             <StatTile label="Chargers online" value={overview.chargers.online}>
               of {overview.chargers.total} · {overview.chargers.offline} offline · {overview.chargers.unavailable} unavailable

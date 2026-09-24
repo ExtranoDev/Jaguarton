@@ -16,7 +16,8 @@ export default function AddChargerForm({ submitting, error, onSubmit, onCancel }
     setPowerKw(String(CONNECTORS.find((c) => c.value === value).defaultKw));
   }
 
-  const valid = Number(powerKw) > 0 && pricePerKwh !== '' && Number(pricePerKwh) >= 0;
+  // The API wants a price above 0 (and at most 100,000) and power above 0 (at most 1000 kW).
+  const valid = Number(powerKw) > 0 && Number(powerKw) <= 1000 && pricePerKwh !== '' && Number(pricePerKwh) > 0 && Number(pricePerKwh) <= 100000;
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -75,7 +76,7 @@ export default function AddChargerForm({ submitting, error, onSubmit, onCancel }
           <input
             id="price"
             type="number"
-            min="0"
+            min="0.01"
             step="0.01"
             value={pricePerKwh}
             onChange={(e) => setPricePerKwh(e.target.value)}

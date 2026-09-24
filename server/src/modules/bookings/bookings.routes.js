@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { query } = require('express-validator');
+const { body, query } = require('express-validator');
 const controller = require('./bookings.controller');
 const { validate } = require('../../middleware/validate.middleware');
 const { requireAuth } = require('../../middleware/auth.middleware');
@@ -24,6 +24,16 @@ router.get(
   ],
   validate,
   controller.operatorList
+);
+
+// An operator cancels a booking at one of their stations; a reason (5+ characters) is required.
+router.patch(
+  '/operator/bookings/:id/cancel',
+  requireAuth,
+  requireRole('operator'),
+  [idParam(), body('reason').optional({ values: 'null' }).isString().withMessage('reason must be text').bail().isLength({ max: 500 }).withMessage('reason must be 500 characters or fewer')],
+  validate,
+  controller.operatorCancel
 );
 
 router.get('/bookings/:id', requireAuth, [idParam()], validate, controller.detail);

@@ -20,12 +20,16 @@ async function getSlotsForCharger(chargerId, dateStr, viewer = null) {
   if (!charger) throw new NotFoundError('Charger not found');
   const station = await db('stations').where({ id: charger.station_id }).first();
   // An operator can only look at slots on their own chargers.
-  if (viewer?.role === 'operator' && station?.owner_id !== viewer.id) throw new NotFoundError('Charger not found');
+  const isOwner = viewer?.role === 'operator' && station?.owner_id === viewer.id;
+  if (viewer?.role === 'operator' && !isOwner) throw new NotFoundError('Charger not found');
 
-  // An offline/unavailable charger, or one at a deactivated station or a suspended operator's
-  // station, has no bookable slots, regardless of what individual slot rows say.
-  if (charger.status !== 'online') return [];
-  if (!station || !stationsService.isPubliclyVisible(station, await stationsService.ownerIsActive(db, station))) return [];
+  // For everyone else, an offline/unavailable or archived charger, or one at a station drivers can't
+  // see (deactivated, unapproved, archived, or its operator suspended), has no bookable slots,
+  // whatever the slot rows say. The owner always sees their slots, to block and unblock them.
+  if (!isOwner) {
+    if (charger.status !== 'online' || charger.archived_at != null) return [];
+    if (!station || !stationsService.isPubliclyVisible(station, await stationsService.ownerIsActive(db, station))) return [];
+  }
 
   let query = db('slots').where({ charger_id: chargerId });
 
@@ -58,6 +62,8 @@ const MAX_GENERATE_DAYS_AHEAD = 90;
 
 async function generateSlots(chargerId, ownerId, { date, startHour, endHour, durationMinutes }, context = {}) {
   const { charger, station } = await chargersService.assertOwnsCharger(chargerId, ownerId);
+  chargersService.assertChargerNotArchived(charger);
+  stationsService.assertNotArchived(station);
   requireValidDate(date);
   const today = toZonedDateString(new Date());
   const lastDay = addDaysToDateString(today, MAX_GENERATE_DAYS_AHEAD);
@@ -96,7 +102,12 @@ async function topUpSlots({
   ownerId,
   stationId,
 } = {}) {
-  let chargerQuery = db('chargers as c').innerJoin('stations as s', 's.id', 'c.station_id').select('c.id');
+  // Archived chargers and stations get no new slots.
+  let chargerQuery = db('chargers as c')
+    .innerJoin('stations as s', 's.id', 'c.station_id')
+    .whereNull('c.archived_at')
+    .whereNull('s.archived_at')
+    .select('c.id');
   if (ownerId) chargerQuery = chargerQuery.where('s.owner_id', ownerId);
   if (stationId) chargerQuery = chargerQuery.andWhere('s.id', stationId);
   const chargers = await chargerQuery;

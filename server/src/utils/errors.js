@@ -29,9 +29,12 @@ class NotFoundError extends AppError {
   }
 }
 
+// `details` are extra fields for the response body, e.g. { code, upcomingBookings } when the
+// client must confirm before trying again.
 class ConflictError extends AppError {
-  constructor(message = 'Conflict') {
+  constructor(message = 'Conflict', details = null) {
     super(message, 409);
+    this.details = details;
   }
 }
 

@@ -15,7 +15,7 @@ const BODY_ERRORS = {
 function errorHandler(err, req, res, next) {
   if (err instanceof AppError) {
     if (err.retryAfterSeconds) res.set('Retry-After', String(err.retryAfterSeconds));
-    return res.status(err.statusCode).json({ error: err.message });
+    return res.status(err.statusCode).json({ ...err.details, error: err.message });
   }
 
   if (err.type && Number.isInteger(err.status) && err.status >= 400 && err.status < 500) {
