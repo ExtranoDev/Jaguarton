@@ -95,7 +95,7 @@ export default function LocationPicker({ lat, lng, onPick }) {
           <MapResizer expanded={expanded} />
           <FlyTo focus={focus} />
           {hasPoint && (
-            <Marker position={[lat, lng]} icon={pinIcon('#0E8F52', true)} draggable eventHandlers={dragHandlers} />
+            <Marker position={[lat, lng]} icon={pinIcon('#0A7A45', true)} draggable eventHandlers={dragHandlers} />
           )}
         </MapContainer>
       </div>

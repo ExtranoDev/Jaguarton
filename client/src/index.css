@@ -9,10 +9,25 @@ body {
   color: #12211c;
 }
 
+/* Tailwind's default placeholder grey is about 2.5:1; this is 4.5:1 on white. */
+input::placeholder,
+textarea::placeholder {
+  color: #6b7a71;
+  opacity: 1;
+}
+
 h1,
 h2,
 h3 {
   font-family: 'Orbitron', sans-serif;
+}
+
+/* Leaflet's zoom buttons are 30px; make them 40px tap targets like the rest of the app. */
+.leaflet-bar a,
+.leaflet-touch .leaflet-bar a {
+  width: 40px;
+  height: 40px;
+  line-height: 40px;
 }
 
 .leaflet-container {

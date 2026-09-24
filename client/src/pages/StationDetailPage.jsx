@@ -8,10 +8,12 @@ import { getStation } from '../api/stations.js';
 import { getSlots } from '../api/slots.js';
 import { createBooking } from '../api/bookings.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { CONNECTOR_LABELS, nextDays, toLocalDateString } from '../utils/format.js';
+import { CONNECTOR_LABELS, nextDays } from '../utils/format.js';
 import { directionsUrl } from '../utils/maps.js';
+import { carConnectors, fitsCar } from '../utils/connectors.js';
 
-const DAYS_SHOWN = 3;
+// Slots are generated a week ahead (today included), so drivers can book any of those days.
+const DAYS_SHOWN = 7;
 
 export default function StationDetailPage() {
   const { id } = useParams();
@@ -23,7 +25,7 @@ export default function StationDetailPage() {
   const [error, setError] = useState('');
 
   const [selectedChargerId, setSelectedChargerId] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(toLocalDateString(days[0]));
+  const [selectedDate, setSelectedDate] = useState(days[0]);
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState(null);
@@ -75,6 +77,8 @@ export default function StationDetailPage() {
   }, [selectedChargerId, selectedDate, refreshKey]);
 
   const selectedCharger = station?.chargers.find((c) => c.id === selectedChargerId) || null;
+  const isDriver = user?.role === 'driver';
+  const knowsCar = carConnectors(user).length > 0;
   const selectedSlot = slots.find((s) => s.id === selectedSlotId) || null;
 
   function selectCharger(chargerId) {
@@ -119,23 +123,23 @@ export default function StationDetailPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-paper">
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper">
       <Navbar active="primary" />
 
-      <div className="overflow-y-auto">
-        <div className="px-8 pt-5">
-          <Link to="/" className="text-[13px] text-ink-2">
+      <main className="overflow-y-auto">
+        <div className="px-4 pt-4 sm:px-8 sm:pt-5">
+          <Link to="/" className="inline-flex min-h-10 items-center text-[13px] text-ink-2 hover:text-ink">
             ← Back to map
           </Link>
         </div>
 
-        {error && <p className="px-8 py-6 text-sm text-terracotta">{error}</p>}
+        {error && <p className="px-4 py-6 text-sm text-terracotta sm:px-8">{error}</p>}
 
         {station && (
           <>
-            <div className="flex items-start justify-between gap-6 px-8 py-5">
-              <div className="flex flex-col gap-2">
-                <h1 className="font-display text-[32px] font-bold text-ink">{station.name}</h1>
+            <div className="flex items-start justify-between gap-6 px-4 pb-5 pt-2 sm:px-8 sm:pt-5">
+              <div className="flex min-w-0 flex-col gap-2">
+                <h1 className="break-words font-display text-2xl font-bold text-ink sm:text-[32px]">{station.name}</h1>
                 <p className="text-[15px] text-ink-2">{station.address}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-sage-tint px-2.5 py-1 text-xs text-ink-2">
@@ -146,26 +150,35 @@ export default function StationDetailPage() {
                     href={directionsUrl(station.lat, station.lng)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-full border border-green px-3 py-1 text-xs font-semibold text-green-dark hover:bg-green-tint"
+                    className="inline-flex min-h-10 items-center rounded-full border border-green px-3.5 text-xs font-semibold text-green-dark hover:bg-green-tint"
                   >
                     Get directions ↗
                   </a>
                 </div>
               </div>
               <div className="hidden h-[100px] w-40 flex-shrink-0 items-center justify-center rounded-2xl bg-sage-tint sm:flex">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#0E8F52">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#0A7A45">
                   <path d="M12 2C7.6 2 4 5.6 4 10c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
                 </svg>
               </div>
             </div>
 
-            <div className="flex flex-col gap-8 px-8 pb-10 lg:flex-row">
+            <div className="flex flex-col gap-8 px-4 pb-10 sm:px-8 lg:flex-row">
               <div className="flex flex-col gap-4 lg:w-[560px] lg:flex-shrink-0">
                 <h2 className="text-lg font-semibold text-ink">Chargers</h2>
+                {isDriver && !knowsCar && (
+                  <p className="text-xs text-ink-2">
+                    <Link to="/account" className="font-semibold text-green underline">
+                      Add your car&apos;s connectors
+                    </Link>{' '}
+                    to see which chargers fit it.
+                  </p>
+                )}
                 <div className="flex flex-col gap-3">
                   {station.chargers.map((charger) => {
                     const online = charger.status === 'online';
                     const selected = charger.id === selectedChargerId;
+                    const fits = fitsCar(user, charger.connector_type);
                     return (
                       <button
                         key={charger.id}
@@ -178,7 +191,7 @@ export default function StationDetailPage() {
                             ? 'border-2 border-green bg-green-tint'
                             : online
                               ? 'border-border bg-surface hover:border-green'
-                              : 'cursor-not-allowed border-border bg-surface opacity-60'
+                              : 'cursor-not-allowed border-dashed border-border bg-sage-tint'
                         }`}
                       >
                         <div className="flex items-center gap-3">
@@ -194,6 +207,15 @@ export default function StationDetailPage() {
                               {CONNECTOR_LABELS[charger.connector_type] || charger.connector_type}
                             </span>
                             <span className="text-xs text-ink-2">{charger.power_kw} kW</span>
+                            {fits !== null && (
+                              <span
+                                className={`mt-1 self-start rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                                  fits ? 'bg-green-tint text-green-dark' : 'bg-terracotta-tint text-terracotta'
+                                }`}
+                              >
+                                {fits ? '✓ Fits your car' : 'Needs an adapter'}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
@@ -232,6 +254,8 @@ export default function StationDetailPage() {
                   <BookingSummary
                     station={station}
                     charger={selectedCharger}
+                    fitsCar={fitsCar(user, selectedCharger.connector_type)}
+                    carConnectors={carConnectors(user)}
                     slot={selectedSlot}
                     canBook={user?.role === 'driver'}
                     submitting={submitting}
@@ -243,7 +267,7 @@ export default function StationDetailPage() {
             </div>
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }

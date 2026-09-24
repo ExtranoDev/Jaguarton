@@ -42,6 +42,51 @@ function renderAccount() {
   );
 }
 
+describe("a driver's car", () => {
+  it('saves the connectors the car takes, and clears them again', async () => {
+    const user = userEvent.setup();
+    const requests = [];
+    let current = { ...driver, connector_types: [] };
+    signInAs(driver);
+    server.use(
+      http.get(`${API}/auth/me`, () => HttpResponse.json({ user: current })),
+      http.patch(`${API}/auth/me`, async ({ request }) => {
+        const body = await request.json();
+        requests.push(body);
+        current = { ...current, connector_types: body.connectorTypes };
+        return HttpResponse.json({ user: current });
+      })
+    );
+    renderAccount();
+
+    const save = await screen.findByRole('button', { name: 'Save connectors' });
+    expect(save).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: 'CCS2 · DC Fast' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Type 2 · AC' }));
+    await user.click(save);
+
+    expect(await screen.findByText('Saved. The map will show chargers that fit your car.')).toBeInTheDocument();
+    expect(requests[0]).toEqual({ connectorTypes: ['CCS2_DC', 'Type2_AC'] });
+    expect(save).toBeDisabled(); // saved, nothing new to save
+
+    await user.click(screen.getByRole('checkbox', { name: 'CCS2 · DC Fast' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Type 2 · AC' }));
+    await user.click(save);
+    expect(await screen.findByText('Saved. The map will show every charger.')).toBeInTheDocument();
+    expect(requests[1]).toEqual({ connectorTypes: [] });
+  });
+
+  it('is only for drivers', async () => {
+    const operator = { id: 3, name: 'Op', email: 'op@example.com', role: 'operator', is_active: true };
+    signInAs(operator);
+    server.use(http.get(`${API}/auth/me`, () => HttpResponse.json({ user: operator })));
+    renderAccount();
+
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your car' })).not.toBeInTheDocument();
+  });
+});
+
 describe('account page', () => {
   it('shows who you are, and saves a new name (which the navbar picks up)', async () => {
     const user = userEvent.setup();

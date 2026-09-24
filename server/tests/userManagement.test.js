@@ -62,6 +62,36 @@ describe('own account', () => {
     expect((await db('users').where({ id: ada.id }).first()).name).toBe('Ada Driver');
   });
 
+  it("records the car's connector types, normalised, and clears them with an empty list", async () => {
+    const ada = await signUp();
+    const patchMe = (body) => request(app).patch('/api/auth/me').set({ Authorization: `Bearer ${ada.token}` }).send(body);
+    expect(ada.connector_types).toEqual([]);
+
+    const res = await patchMe({ connectorTypes: ['CCS2_DC', 'Type2_AC', 'CCS2_DC'] });
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ name: 'Ada Driver', connector_types: ['Type2_AC', 'CCS2_DC'] });
+    expect((await db('users').where({ id: ada.id }).first()).connector_types).toBe('["Type2_AC","CCS2_DC"]');
+    expect((await request(app).get('/api/auth/me').set({ Authorization: `Bearer ${ada.token}` })).body.user.connector_types).toEqual([
+      'Type2_AC',
+      'CCS2_DC',
+    ]);
+
+    const both = await patchMe({ name: 'Ada L', connectorTypes: [] });
+    expect(both.body.user).toMatchObject({ name: 'Ada L', connector_types: [] });
+    expect((await db('users').where({ id: ada.id }).first()).connector_types).toBeNull();
+  });
+
+  it('rejects unknown connector types and an empty update', async () => {
+    const ada = await signUp();
+    const patchMe = (body) => request(app).patch('/api/auth/me').set({ Authorization: `Bearer ${ada.token}` }).send(body);
+
+    expect((await patchMe({ connectorTypes: ['Tesla'] })).status).toBe(400);
+    expect((await patchMe({ connectorTypes: 'CCS2_DC' })).status).toBe(400);
+    expect((await patchMe({ connectorTypes: [{ a: 1 }] })).status).toBe(400);
+    expect((await patchMe({})).status).toBe(400);
+    expect((await db('users').where({ id: ada.id }).first()).connector_types).toBeNull();
+  });
+
   it('changes the password when the current one is right; the old one stops working', async () => {
     const ada = await signUp();
     const change = (currentPassword, newPassword) =>

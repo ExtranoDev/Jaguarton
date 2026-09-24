@@ -30,7 +30,7 @@ function Banner({ tone = 'warn', children }) {
   );
 }
 
-const headerButton = 'min-h-10 rounded-lg border px-3.5 text-[13px] font-semibold disabled:opacity-50';
+const headerButton = 'min-h-10 rounded-lg border px-3.5 text-[13px] font-semibold disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none';
 
 export default function StationPanel({ station, onChanged }) {
   const [tab, setTab] = useState('chargers');
@@ -334,7 +334,7 @@ export default function StationPanel({ station, onChanged }) {
               type="button"
               onClick={handleGenerateSlots}
               disabled={generatingSlots || activeChargers.length === 0}
-              className="min-h-10 rounded-lg border border-green bg-surface px-4 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:opacity-50"
+              className="min-h-10 rounded-lg border border-green bg-surface px-4 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
             >
               {generatingSlots ? 'Generating…' : 'Generate slots — next 7 days'}
             </button>

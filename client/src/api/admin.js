@@ -8,9 +8,10 @@ export async function getOverview() {
   return data.overview;
 }
 
-export async function listUsers({ role, q } = {}) {
-  const { data } = await client.get('/admin/users', { params: clean({ role, q }) });
-  return data.users;
+// One page: { users, total, page, pageSize }.
+export async function listUsers({ role, q, page, pageSize } = {}) {
+  const { data } = await client.get('/admin/users', { params: clean({ role, q, page, pageSize }) });
+  return data;
 }
 
 // A reason is required to suspend (optional to reactivate).
@@ -43,9 +44,10 @@ export async function reviewStation(id, decision, reason) {
   return data.station;
 }
 
-export async function listBookings({ status, stationId, date } = {}) {
-  const { data } = await client.get('/admin/bookings', { params: clean({ status, stationId, date }) });
-  return data.bookings;
+// One page, newest first: { bookings, total, page, pageSize }.
+export async function listBookings({ status, stationId, date, page, pageSize } = {}) {
+  const { data } = await client.get('/admin/bookings', { params: clean({ status, stationId, date, page, pageSize }) });
+  return data;
 }
 
 export async function cancelBooking(id, reason) {

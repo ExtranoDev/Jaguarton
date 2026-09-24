@@ -12,7 +12,7 @@ const list = asyncHandler(async (req, res) => {
     minPrice: minPrice ?? undefined,
     maxPrice: maxPrice ?? undefined,
     status: status || undefined,
-    connectorType: connectorType || undefined,
+    connectorTypes: connectorType || undefined, // a list, split by the route
   };
   const stations = await stationsService.listStations(filters, req.user);
   res.status(200).json({ stations });

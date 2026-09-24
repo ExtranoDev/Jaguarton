@@ -1,19 +1,15 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../src/context/AuthContext.jsx';
 import AdminDashboardPage from '../src/pages/AdminDashboardPage.jsx';
 import { API, server, signInAs } from './server.js';
+import { lagosIso } from './time.js';
 
 const admin = { id: 1, name: 'Ifeoma Balogun', email: 'admin@example.com', role: 'admin', is_active: true };
 
-const isoDaysFromNow = (days, hour) => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  date.setHours(hour, 0, 0, 0);
-  return date.toISOString();
-};
+const isoDaysFromNow = lagosIso;
 
 // An in-memory stand-in for the admin endpoints that records what the UI sends.
 function mockAdminApi() {
@@ -45,7 +41,7 @@ function mockAdminApi() {
   signInAs(admin);
   server.use(
     http.get(`${API}/auth/me`, () => HttpResponse.json({ user: admin })),
-    http.get(`${API}/admin/users`, () => HttpResponse.json({ users: state.users })),
+    http.get(`${API}/admin/users`, () => HttpResponse.json({ users: state.users, total: state.users.length, page: 1, pageSize: 50 })),
     http.patch(`${API}/admin/users/:id`, async ({ request, params }) => {
       const body = await request.json();
       state.requests.user = { id: Number(params.id), ...body };
@@ -54,7 +50,7 @@ function mockAdminApi() {
       return HttpResponse.json({ user });
     }),
     http.get(`${API}/admin/stations`, () => HttpResponse.json({ stations: [{ id: 1, name: 'Lekki Phase 1 Charging Hub', chargers: [] }] })),
-    http.get(`${API}/admin/bookings`, () => HttpResponse.json({ bookings: state.bookings })),
+    http.get(`${API}/admin/bookings`, () => HttpResponse.json({ bookings: state.bookings, total: state.bookings.length, page: 1, pageSize: 50 })),
     http.patch(`${API}/admin/bookings/:id/cancel`, async ({ request, params }) => {
       const body = await request.json();
       state.requests.cancel = { id: Number(params.id), ...body };
@@ -200,6 +196,63 @@ describe('admin bookings', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(state.requests.cancel).toBeUndefined();
     expect(within(rowFor('EVB-FF6XR2')).getByText('Confirmed')).toBeInTheDocument();
+  });
+});
+
+describe('paging', () => {
+  // 120 users (or bookings) on the server: the tab asks for one page of 50 at a time.
+  function mockPaged(path, key) {
+    const requests = [];
+    signInAs(admin);
+    server.use(
+      http.get(`${API}/auth/me`, () => HttpResponse.json({ user: admin })),
+      http.get(`${API}/admin/stations`, () => HttpResponse.json({ stations: [] })),
+      http.get(`${API}/admin/${path}`, ({ request }) => {
+        const params = Object.fromEntries(new URL(request.url).searchParams);
+        requests.push(params);
+        const page = Number(params.page);
+        const rows = Array.from({ length: page === 3 ? 20 : 50 }, (_, i) => {
+          const id = (page - 1) * 50 + i + 1;
+          return key === 'users'
+            ? { id, name: `User ${id}`, email: `u${id}@example.com`, role: 'driver', is_active: true, created_at: '2026-09-01T10:00:00Z' }
+            : {
+                id,
+                booking_reference: `EVB-${String(id).padStart(6, '0')}`,
+                driver_name: `Driver ${id}`,
+                driver_email: `d${id}@example.com`,
+                station_name: 'Hub',
+                connector_type: 'CCS2_DC',
+                power_kw: 50,
+                status: 'confirmed',
+                price_at_booking: 200,
+                start_time: isoDaysFromNow(1, 10),
+                end_time: isoDaysFromNow(1, 11),
+              };
+        });
+        return HttpResponse.json({ [key]: rows, total: 120, page, pageSize: 50 });
+      })
+    );
+    return requests;
+  }
+
+  it.each([
+    ['users', 'users', 'users', 'User 51'],
+    ['bookings', 'bookings', 'bookings, newest first', 'EVB-000051'],
+  ])('pages the %s tab, and goes back to page 1 when a filter changes', async (tab, key, label, firstOfPage2) => {
+    const user = userEvent.setup();
+    const requests = mockPaged(key, key);
+    renderAdmin(tab);
+
+    expect(await screen.findAllByText(`Showing 1–50 of 120 ${label}`)).toHaveLength(2);
+    expect(requests[0]).toMatchObject({ page: '1', pageSize: '50' });
+
+    await user.click(screen.getAllByRole('button', { name: /Next/ })[0]);
+    expect(await screen.findAllByText(`Showing 51–100 of 120 ${label}`)).toHaveLength(2);
+    expect(screen.getByText(firstOfPage2)).toBeInTheDocument();
+
+    const filter = screen.getByRole('combobox', { name: /Filter by (role|status)/ });
+    await user.selectOptions(filter, within(filter).getAllByRole('option')[1]);
+    await waitFor(() => expect(requests.at(-1).page).toBe('1'));
   });
 });
 

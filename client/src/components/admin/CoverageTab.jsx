@@ -59,7 +59,7 @@ export default function CoverageTab() {
           type="button"
           onClick={fillGaps}
           disabled={busy || !coverage}
-          className="rounded-lg border border-green bg-surface px-4 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:opacity-50"
+          className="rounded-lg border border-green bg-surface px-4 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
         >
           {busy ? 'Generating…' : `Fill gaps — next ${days} days`}
         </button>
@@ -71,8 +71,8 @@ export default function CoverageTab() {
           <option value={14}>Next 14 days</option>
           <option value={30}>Next 30 days</option>
         </select>
-        <label className="flex items-center gap-2 text-[13px] text-ink-2">
-          <input type="checkbox" checked={gapsOnly} onChange={(e) => setGapsOnly(e.target.checked)} />
+        <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink-2">
+          <input type="checkbox" checked={gapsOnly} onChange={(e) => setGapsOnly(e.target.checked)} className="h-5 w-5 accent-green" />
           Only chargers with gaps
         </label>
       </div>

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../src/context/AuthContext.jsx';
 import MapFinderPage from '../src/pages/MapFinderPage.jsx';
+import ProtectedRoute from '../src/routes/ProtectedRoute.jsx';
 import { API, server, signInAs } from './server.js';
 
 // Leaflet needs real layout; what matters here is which stations the page hands to the map.
@@ -58,6 +59,42 @@ function renderFinder() {
 }
 
 const pins = () => screen.getByTestId('map-pins').textContent.split('|').filter(Boolean);
+
+describe("pre-filtering to the driver's car", () => {
+  it("starts on the car's connectors, and the driver can widen it", async () => {
+    const user = userEvent.setup();
+    const requests = [];
+    const withCar = { ...driver, connector_types: ['CCS2_DC', 'CHAdeMO_DC'] };
+    signInAs(withCar);
+    server.use(
+      http.get(`${API}/auth/me`, () => HttpResponse.json({ user: withCar })),
+      http.get(`${API}/stations`, ({ request }) => {
+        requests.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ stations: STATIONS });
+      })
+    );
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <ProtectedRoute role="driver">
+            <MapFinderPage />
+          </ProtectedRoute>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    const ccs = await screen.findByRole('button', { name: 'CCS2 DC' });
+    expect(ccs).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Type 2 AC' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText(/Showing your car's connectors/)).toBeInTheDocument();
+    expect(requests[0]).toEqual({ connectorType: 'CCS2_DC,CHAdeMO_DC' });
+
+    await user.click(ccs);
+    await user.click(screen.getByRole('button', { name: 'CHAdeMO DC' }));
+    expect(requests.at(-1)).toEqual({});
+    expect(screen.queryByText(/Showing your car's connectors/)).not.toBeInTheDocument();
+  });
+});
 
 describe('driver map page', () => {
   it('lists every station and puts every one on the map', async () => {

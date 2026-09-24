@@ -12,7 +12,7 @@ export default function StationCard({ station, selected }) {
       to={`/stations/${station.id}`}
       className={`block rounded-2xl border p-3.5 transition-colors ${
         selected ? 'border-2 border-green bg-surface' : 'border-border bg-surface hover:border-green'
-      } ${!hasOnline ? 'opacity-60' : ''}`}
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-[15px] font-semibold text-ink">{station.name}</span>

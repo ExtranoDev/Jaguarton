@@ -44,7 +44,7 @@ function ChargerRow({ charger, busy, onStatusChange }) {
                 aria-pressed={active}
                 disabled={busy}
                 onClick={() => !active && onStatusChange(charger, status.value)}
-                className={`min-h-10 rounded-full border px-3 text-xs disabled:opacity-60 ${
+                className={`min-h-10 rounded-full border px-3 text-xs disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none ${
                   active ? `${status.active} font-semibold` : 'border-border bg-surface text-ink-2 hover:border-ink-2'
                 }`}
               >

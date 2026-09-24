@@ -161,7 +161,7 @@ describe('operator: charger tools', () => {
     const user = userEvent.setup();
     const state = mockOperator();
 
-    await user.click(await screen.findByRole('button', { name: 'Show slots for charger 10' }));
+    await user.click(await screen.findByRole('button', { name: 'Slots: block or unblock for charger 10' }));
     const list = await screen.findByRole('list', { name: 'Slots for charger 10' });
     const [open, booked] = within(list).getAllByRole('listitem');
     expect(within(booked).getByRole('button', { name: /Booked/ })).toBeDisabled();

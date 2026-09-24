@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,7 +22,7 @@ function mockUsersApi() {
   signInAs(admin);
   server.use(
     http.get(`${API}/auth/me`, () => HttpResponse.json({ user: admin })),
-    http.get(`${API}/admin/users`, () => HttpResponse.json({ users: state.users })),
+    http.get(`${API}/admin/users`, () => HttpResponse.json({ users: state.users, total: state.users.length, page: 1, pageSize: 50 })),
     http.post(`${API}/admin/users`, async ({ request }) => {
       const body = await request.json();
       state.requests.create = body;
@@ -87,7 +87,7 @@ describe('adding a user', () => {
 
     expect(await within(usersTable()).findByText('Tunde Bakare')).toBeInTheDocument();
     expect(state.requests.create).toEqual({ name: 'Tunde Bakare', email: 'tunde@example.com', role: 'operator', password: generated });
-    expect(screen.getByRole('status')).toHaveTextContent('Created Tunde Bakare.');
+    expect(screen.getByText('Created Tunde Bakare.')).toHaveAttribute('role', 'status');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -153,7 +153,7 @@ describe('editing a user', () => {
 
     expect(await within(usersTable()).findByText('Chidi N. Nwosu')).toBeInTheDocument();
     expect(state.requests.update).toEqual({ id: 2, name: 'Chidi N. Nwosu', email: 'driver@example.com', role: 'driver' });
-    expect(screen.getByRole('status')).toHaveTextContent('Saved changes to Chidi N. Nwosu.');
+    expect(screen.getByText('Saved changes to Chidi N. Nwosu.')).toHaveAttribute('role', 'status');
   });
 
   it('locks the admin\'s own role', async () => {
@@ -211,7 +211,7 @@ describe('resetting a password', () => {
     await user.type(within(form).getByLabelText('Reason for the reset'), 'Asked by their manager');
     await user.click(confirm);
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Password updated for Chidi Nwosu.'));
+    expect(await screen.findByText('Password updated for Chidi Nwosu.')).toHaveAttribute('role', 'status');
     expect(state.requests.reset).toEqual({ id: 2, body: { password: 'chosen-by-admin', reason: 'Asked by their manager' } });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('chosen-by-admin')).not.toBeInTheDocument();

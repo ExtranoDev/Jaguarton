@@ -13,16 +13,39 @@ const { isUniqueViolation } = require('../../utils/dbErrors');
 const { hashPassword, verifyPassword, burnPasswordCheck } = require('../../utils/password');
 const loginThrottle = require('../../utils/loginThrottle');
 const audit = require('../audit/audit.service');
+const { CONNECTOR_TYPES } = require('../../middleware/validators');
 
 const TOKEN_TTL = '7d';
 
 // Emails are stored lower-case (migration 10); every lookup and write goes through this.
 const normalizeEmail = (email) => String(email).trim().toLowerCase();
 
+// users.connector_types is a JSON array in a text column (migration 13); NULL means "not set".
+function parseConnectorTypes(stored) {
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((type) => CONNECTOR_TYPES.includes(type)) : [];
+  } catch {
+    return [];
+  }
+}
+
+// De-duplicated, in CONNECTOR_TYPES order, and NULL when empty, so the same choice always stores
+// the same text (and saving it again isn't logged as a change).
+function serializeConnectorTypes(types) {
+  const chosen = CONNECTOR_TYPES.filter((type) => types.includes(type));
+  return chosen.length > 0 ? JSON.stringify(chosen) : null;
+}
+
 function toPublicUser(user) {
   const { password_hash: _passwordHash, token_version: _tokenVersion, ...publicUser } = user;
   // SQLite stores booleans as 0/1, Postgres as true/false.
-  return { ...publicUser, is_active: Boolean(publicUser.is_active) };
+  return {
+    ...publicUser,
+    is_active: Boolean(publicUser.is_active),
+    connector_types: parseConnectorTypes(publicUser.connector_types),
+  };
 }
 
 // `tv` ties the token to the user's token_version: bumping that (password change or reset, role
@@ -117,16 +140,29 @@ async function getUserById(id) {
   return toPublicUser(user);
 }
 
-async function updateProfile(userId, { name }, context = {}) {
+// Either field may be left out; only what is sent changes. Connector changes are logged as arrays
+// (not the stored JSON text) so the audit entry reads naturally.
+async function updateProfile(userId, { name, connectorTypes }, context = {}) {
   return db.transaction(async (trx) => {
     const before = await trx('users').where({ id: userId }).first();
     if (!before) throw new NotFoundError('User not found');
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (connectorTypes !== undefined) updates.connector_types = serializeConnectorTypes(connectorTypes);
+    if (Object.keys(updates).length === 0) return toPublicUser(before);
+
     const [user] = await trx('users')
       .where({ id: userId })
-      .update({ name, updated_at: trx.fn.now() })
+      .update({ ...updates, updated_at: trx.fn.now() })
       .returning('*');
-    const changes = audit.diff(before, user, ['name']);
-    if (changes) {
+    const changes = audit.diff(before, user, ['name']) || {};
+    if ((before.connector_types ?? null) !== (user.connector_types ?? null)) {
+      changes.connector_types = {
+        from: parseConnectorTypes(before.connector_types),
+        to: parseConnectorTypes(user.connector_types),
+      };
+    }
+    if (Object.keys(changes).length > 0) {
       await audit.record(trx, { action: 'auth.profile_update', context, actor: asActor(user), target: audit.userTarget(user), changes });
     }
     return toPublicUser(user);

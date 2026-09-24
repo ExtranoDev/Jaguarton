@@ -6,7 +6,7 @@ export default function Pager({ page, pageSize, total, onPage, label = 'results'
   const last = Math.min(page * pageSize, total);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const buttonClass =
-    'min-h-10 rounded-lg border border-border bg-surface px-4 text-[13px] font-semibold text-ink hover:border-green disabled:opacity-50';
+    'min-h-10 rounded-lg border border-border bg-surface px-4 text-[13px] font-semibold text-ink hover:border-green disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none';
 
   return (
     <nav aria-label={`Pages of ${label}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

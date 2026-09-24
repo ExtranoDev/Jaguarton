@@ -12,6 +12,7 @@ const {
   oneOf,
   idParam,
   requiredText,
+  scalar,
   optionalFloatQuery,
 } = require('../../middleware/validators');
 
@@ -31,7 +32,12 @@ const listValidators = [
   optionalFloatQuery('minPrice', { min: 0, max: 1e6 }, 'minPrice must be a price'),
   optionalFloatQuery('maxPrice', { min: 0, max: 1e6 }, 'maxPrice must be a price'),
   oneOf(query, 'status', CHARGER_STATUSES).optional({ values: 'falsy' }),
-  oneOf(query, 'connectorType', CONNECTOR_TYPES).optional({ values: 'falsy' }),
+  // One type, or several separated by commas (a driver's car may take more than one).
+  scalar(query, 'connectorType')
+    .optional({ values: 'falsy' })
+    .custom((value) => String(value).split(',').every((type) => CONNECTOR_TYPES.includes(type)))
+    .withMessage(`connectorType must be one or more of ${CONNECTOR_TYPES.join(', ')}, separated by commas`)
+    .customSanitizer((value) => [...new Set(String(value).split(','))]),
 ];
 
 router.get('/stations', optionalAuth, listValidators, validate, controller.list);

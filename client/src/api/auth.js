@@ -15,8 +15,9 @@ export async function fetchMe() {
   return data.user;
 }
 
-export async function updateProfile({ name }) {
-  const { data } = await client.patch('/auth/me', { name });
+// Send only what changes: { name } and/or { connectorTypes }.
+export async function updateProfile(changes) {
+  const { data } = await client.patch('/auth/me', changes);
   return data.user;
 }
 

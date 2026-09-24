@@ -8,7 +8,7 @@ export async function listStations(filters = {}) {
   if (filters.minPrice != null) params.minPrice = filters.minPrice;
   if (filters.maxPrice != null) params.maxPrice = filters.maxPrice;
   if (filters.status) params.status = filters.status;
-  if (filters.connectorType) params.connectorType = filters.connectorType;
+  if (filters.connectorTypes?.length) params.connectorType = filters.connectorTypes.join(',');
 
   const { data } = await client.get('/stations', { params });
   return data.stations;

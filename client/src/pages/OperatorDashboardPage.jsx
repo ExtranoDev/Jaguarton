@@ -28,6 +28,15 @@ function StationBadges({ station }) {
   );
 }
 
+// The same at-a-glance status as the badges, as text for the phone-sized station menu.
+function pickerNote(station) {
+  if (station.archived) return ' (archived)';
+  if (station.approval_status === 'pending') return ' (pending approval)';
+  if (station.approval_status === 'rejected') return ' (rejected)';
+  if (station.is_active === false) return ' (deactivated)';
+  return '';
+}
+
 export default function OperatorDashboardPage() {
   const [stations, setStations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -78,11 +87,11 @@ export default function OperatorDashboardPage() {
   const chargerCount = stations.reduce((total, s) => total + liveChargers(s).length, 0);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-paper">
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper">
       <Navbar active="primary" />
 
-      <div className="flex-grow overflow-y-auto">
-        <div className="flex items-start justify-between gap-4 px-4 sm:px-8 pt-6">
+      <main className="flex-grow overflow-y-auto">
+        <div className="flex flex-wrap items-start justify-between gap-4 px-4 pt-6 sm:px-8">
           <div className="flex flex-col gap-1">
             <h1 className="font-display text-[26px] font-bold text-ink">My Stations</h1>
             <p className="text-[13px] text-ink-2">
@@ -96,7 +105,7 @@ export default function OperatorDashboardPage() {
               setAddingStation(true);
               setCreateError('');
             }}
-            className="rounded-[10px] bg-green px-5 py-3 text-sm font-semibold text-white"
+            className="min-h-10 rounded-[10px] bg-green px-5 py-3 text-sm font-semibold text-white"
           >
             + Add Station
           </button>
@@ -107,7 +116,33 @@ export default function OperatorDashboardPage() {
 
         {!loading && !error && (
           <div className="flex flex-col gap-6 px-4 sm:px-8 pb-10 pt-5 lg:flex-row">
-            <nav aria-label="Your stations" className="flex flex-col gap-2.5 lg:w-[320px] lg:flex-shrink-0">
+            {/* Phones: pick the station from a menu, so its details sit right here rather than
+                below the whole list. From desktop width the list is a sidebar. */}
+            {stations.length > 0 && (
+              <div className="flex flex-col gap-1.5 lg:hidden">
+                <label htmlFor="station-picker" className="text-[13px] font-semibold text-ink-2">
+                  Station
+                </label>
+                <select
+                  id="station-picker"
+                  value={addingStation ? '' : (selectedId ?? '')}
+                  onChange={(e) => {
+                    setAddingStation(false);
+                    setSelectedId(Number(e.target.value));
+                  }}
+                  className="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm text-ink"
+                >
+                  {addingStation && <option value="">New station</option>}
+                  {orderedStations.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.name}
+                      {pickerNote(station)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <nav aria-label="Your stations" className="hidden flex-col gap-2.5 lg:flex lg:w-[320px] lg:flex-shrink-0">
               {stations.length === 0 && (
                 <p className="rounded-xl bg-sage-tint p-4 text-sm text-ink-2">
                   You haven&apos;t registered a station yet.
@@ -162,7 +197,7 @@ export default function OperatorDashboardPage() {
             )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

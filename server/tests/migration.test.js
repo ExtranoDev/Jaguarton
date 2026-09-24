@@ -219,3 +219,22 @@ describe('migration 12: station approval and archiving', () => {
     await db.migrate.latest(); // re-running is a no-op
   });
 });
+
+describe('migration 13: user connector types', () => {
+  const MIGRATION = '20260101000013_user_connector_types.js';
+
+  it('adds an empty connector_types to every user, keeps them on rollback, and re-runs cleanly', async () => {
+    const { driver, station } = await createScenario();
+    try {
+      await db('users').where({ id: driver.id }).update({ connector_types: '["CCS2_DC"]' });
+      await db.migrate.down({ name: MIGRATION });
+      expect(await db.schema.hasColumn('users', 'connector_types')).toBe(false);
+      expect(await db('users').where({ id: driver.id })).toHaveLength(1);
+      expect(await db('stations').where({ id: station.id })).toHaveLength(1);
+    } finally {
+      await db.migrate.latest();
+    }
+    expect((await db('users').where({ id: driver.id }).first()).connector_types).toBeNull();
+    await db.migrate.latest(); // re-running is a no-op
+  });
+});

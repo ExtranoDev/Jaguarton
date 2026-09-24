@@ -83,6 +83,20 @@ describe('security events', () => {
     expect(password).toMatchObject({ action: 'auth.password_change', target_id: body.user.id, changes: null });
     expect(JSON.stringify(await entries())).not.toMatch(/first-password|second-password/);
   });
+
+  it('records connector changes as lists, and nothing when they are saved unchanged', async () => {
+    const { body } = await signup();
+    const user = { id: body.user.id, role: 'driver' };
+    await call('patch', '/api/auth/me', user, { connectorTypes: ['CCS2_DC'] });
+    await call('patch', '/api/auth/me', user, { connectorTypes: ['CCS2_DC'] });
+    await call('patch', '/api/auth/me', user, { connectorTypes: ['CHAdeMO_DC', 'CCS2_DC'] });
+
+    const rows = await entries({ action: 'auth.profile_update' }).orderBy('id');
+    expect(rows.map((row) => json(row.changes))).toEqual([
+      { connector_types: { from: [], to: ['CCS2_DC'] } },
+      { connector_types: { from: ['CCS2_DC'], to: ['CCS2_DC', 'CHAdeMO_DC'] } },
+    ]);
+  });
 });
 
 // ------------------------------------------------------------------------------ operators

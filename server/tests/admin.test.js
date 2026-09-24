@@ -115,6 +115,21 @@ describe('users', () => {
     expect((await get(admin, '/users?role=root')).status).toBe(400);
   });
 
+  it('pages the list, with the total that matches the filters', async () => {
+    await createScenario(); // 2 operators, 2 drivers
+    const admin = await createAdmin();
+
+    const first = await get(admin, '/users?pageSize=2');
+    expect(first.body).toMatchObject({ total: 5, page: 1, pageSize: 2 });
+    const second = await get(admin, '/users?pageSize=2&page=3');
+    expect(second.body.users).toHaveLength(1);
+    expect(second.body.users[0].id).toBe(admin.id);
+    expect((await get(admin, '/users?role=driver&pageSize=1')).body).toMatchObject({ total: 2, pageSize: 1 });
+    expect((await get(admin, '/users')).body.pageSize).toBe(50);
+    expect((await get(admin, '/users?pageSize=101')).status).toBe(400);
+    expect((await get(admin, '/users?page=0')).status).toBe(400);
+  });
+
   it('treats empty filters (what a cleared filter box sends) as no filter', async () => {
     const { driver } = await createScenario();
     const admin = await createAdmin();
@@ -333,6 +348,20 @@ describe('bookings', () => {
     expect((await get(admin, '/bookings?status=pending')).status).toBe(400);
   });
 
+  it('pages the bookings, newest first, with the total', async () => {
+    const { driver, slots } = await createScenario();
+    const admin = await createAdmin();
+    const made = [];
+    for (const slot of slots) made.push((await book(driver, slot.id)).body.booking);
+
+    const page1 = await get(admin, '/bookings?pageSize=2');
+    expect(page1.body).toMatchObject({ total: 3, page: 1, pageSize: 2 });
+    expect(page1.body.bookings).toHaveLength(2);
+    const page2 = await get(admin, '/bookings?pageSize=2&page=2');
+    expect(page2.body.bookings.map((b) => b.id)).toEqual([made[0].id]);
+    expect((await get(admin, '/bookings?pageSize=abc')).status).toBe(400);
+  });
+
   it('cancels a booking with a reason, frees the slot so it can be booked again, and logs it', async () => {
     const { admin, driver, otherDriver, slots, first } = await bookedScenario();
 
@@ -430,6 +459,21 @@ describe('overview', () => {
     expect(utilisation.days.filter((d) => d.rate === null)).toHaveLength(6); // no capacity, no rate
   });
 
+  it('leaves slots that have already started out of utilisation', async () => {
+    const { driver, slots, charger } = await createScenario();
+    const admin = await createAdmin();
+    await book(driver, slots[0].id);
+    const started = new Date(Date.now() - 30 * 60 * 1000);
+    await createSlot(charger.id, started, { status: 'booked' });
+    await createSlot(charger.id, new Date(started.getTime() - 60 * 60 * 1000));
+
+    const { utilisation } = (await get(admin, '/overview')).body.overview;
+
+    expect(utilisation).toMatchObject({ booked: 1, open: 2 }); // only tomorrow's three slots
+    const today = utilisation.days[0];
+    expect(today).toMatchObject({ booked: 0, open: 0, rate: null });
+  });
+
   it('has no revenue or price figures', async () => {
     const { driver, slots } = await createScenario();
     const admin = await createAdmin();
@@ -468,6 +512,18 @@ describe('slot coverage', () => {
 
     expect(coverage.summary).toMatchObject({ chargers: 2, chargersWithGaps: 2 });
     expect(coverage.summary.gapDays).toBe(covered.gapDays + empty.gapDays);
+  });
+
+  it('leaves slots that have already started out of the counts', async () => {
+    const { charger } = await createScenario();
+    const admin = await createAdmin();
+    await createSlot(charger.id, new Date(Date.now() - 30 * 60 * 1000));
+
+    const { coverage } = (await get(admin, '/slot-coverage?days=2')).body;
+
+    const covered = coverage.chargers.find((c) => c.chargerId === charger.id);
+    expect(covered.days[0].slots).toBe(0);
+    expect(covered.days[1].slots).toBe(3);
   });
 
   it('validates days', async () => {

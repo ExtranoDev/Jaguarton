@@ -51,9 +51,9 @@ Log in as an admin and you land on `/admin`. Admins can't sign up; the account c
 | Tab | What it does |
 | --- | --- |
 | Overview | Counts of users, stations, chargers and bookings, and slot utilisation for the next 7 days. No revenue figures |
-| Users | Search and filter accounts. **Add user**, **Edit** (name, email, role), **Reset password** (a generated temporary one, shown once, or one you type), and **Suspend** (with confirmation and a reason) or reactivate. Suspension takes effect immediately, even for a token already issued, and blocks login |
+| Users | Search and filter accounts, 50 to a page ("Showing 1–50 of 120 users"). **Add user**, **Edit** (name, email, role), **Reset password** (a generated temporary one, shown once, or one you type), and **Suspend** (with confirmation and a reason) or reactivate. Suspension takes effect immediately, even for a token already issued, and blocks login |
 | Stations | Filter by **Pending approval**, Approved, Rejected or Archived. **Approve** a new station, or **Reject** it with a reason the operator sees. Deactivate (with confirmation and a reason) or reactivate a station, and set any charger online / offline / unavailable |
-| Bookings | Filter by status, station and slot date. **Cancel** a booking; a written reason is required, and the slot is freed |
+| Bookings | Filter by status, station and slot date, newest first, 50 to a page. **Cancel** a booking; a written reason is required, and the slot is freed |
 | Slot coverage | Which chargers have days with no slots in the next 7 / 14 / 30 days, and a button to fill the gaps |
 | Audit log | Everything recorded (see below), filtered by who, kind, action, target and date range, 50 to a page with no limit on how far back you can go. Each entry shows the date with the year and the time in Lagos time, who did it, the target, the reason, what changed (before → after) and the IP address |
 
@@ -66,8 +66,9 @@ Rules worth knowing:
 - **New stations need approval.** A station an operator adds is *pending* and hidden from drivers until an admin approves it (the overview counts how many are waiting). A rejected station shows the admin's reason to its operator; editing it sends it back for approval. Stations that existed before this rule, and seeded ones, are approved.
 - **Taking a charger offline or unavailable while drivers are booked on it asks first.** The API answers 409 (`code: CONFIRM_REQUIRED`, with `upcomingBookings`) unless the request says `confirm: true`, for operators and admins alike. The bookings stay confirmed, and the audit log records how many there were.
 - Suspending an operator hides all of their stations from drivers (map, detail page, slot lists) and makes them unbookable (409), exactly like deactivating each one. Their existing bookings stay confirmed; cancel them from the Bookings tab if needed. The Stations tab's data carries `owner_active` for each station.
-- Utilisation is booked slots ÷ (booked + open slots on online chargers at active stations whose operator isn't suspended). Blocked slots don't count.
-- A coverage "gap" is a day with no slots at all, and today only counts while a default slot could still be created for it.
+- Utilisation is booked slots ÷ (booked + open slots on online chargers at active stations whose operator isn't suspended). Blocked slots don't count, and neither do slots that have already started (they are kept, just not counted).
+- Slot coverage counts only slots that haven't started yet. A coverage "gap" is a day with no such slots, and today only counts while a default slot could still be created for it.
+- `GET /api/admin/users` and `GET /api/admin/bookings` take `page` and `pageSize` (1–100, default 50) and return `total`, `page` and `pageSize` beside the rows, like the audit log.
 - A role can't be changed for an operator who owns stations or a driver who has bookings (suspend the account instead), and you can't change your own role or reset your own password here. There is deliberately no delete: it would cascade through stations and bookings, and suspension covers the safe case.
 - A password reset or a role change signs the user out everywhere: every token issued before it stops working (401) and they log in again. Suspension still takes effect immediately too.
 - The API lives under `/api/admin/*` and returns 401 without a token and 403 for drivers and operators.
@@ -89,7 +90,7 @@ Entries are kept forever, except failed logins, which are deleted 90 days after 
 
 ## For everyone: your account
 
-Click your name in the navbar to open **Account**: change your name, and change your password (it asks for the current one; at least 8 characters). Changing your password signs you out on every other device; you stay signed in where you changed it. If your account is suspended, or your session expires, while you are using the app you are signed out with a message saying why.
+Click your name in the navbar to open **Account**: change your name, (drivers) record **your car's connectors**, and change your password (it asks for the current one; at least 8 characters). Changing your password signs you out on every other device; you stay signed in where you changed it. If your account is suspended, or your session expires, while you are using the app you are signed out with a message saying why.
 
 Rules that apply to every account:
 
@@ -97,11 +98,15 @@ Rules that apply to every account:
 - **Emails are not case-sensitive.** They are stored in lower case, `Ada@Example.com` and `ada@example.com` are the same account, and you can log in with either.
 - **Login throttling:** after 10 wrong passwords for one email from one IP address within 15 minutes, further attempts from there (even with the right password) get "Too many failed login attempts" (429, with a `Retry-After` header) until the oldest failure is 15 minutes old. An unknown email is treated exactly like a wrong password, and takes as long, so neither the message nor the timing reveals who has an account. The counter lives in the API's memory (it runs as one instance), so a restart clears it.
 
+**Your car (drivers).** Tick the connector types your car takes (Type 2 AC, CCS2 DC, CHAdeMO DC). The map then starts filtered to stations with a matching charger (untick the chips to see everything), each charger on a station page is marked **Fits your car** or **Needs an adapter**, and booking a charger that doesn't match shows a warning and a **Book Anyway** button. It never blocks the booking: adapters exist. Leave every box unticked to switch this off. Changes are in the audit log (`auth.profile_update`, before → after). The API: `PATCH /api/auth/me` with `{ "connectorTypes": ["CCS2_DC"] }` (`[]` clears it); users carry `connector_types` (a list). `GET /api/stations?connectorType=` takes one type or several separated by commas.
+
 ## Booking rules
 
 - A slot that has already started can't be booked (409), even if it is still marked available.
 - A driver can't hold two confirmed bookings whose times overlap, at any station (409, naming the booking that clashes). Cancelling one frees the time again.
 - Operators can create slots from today up to 90 days ahead; slots that have already started are never created.
+- Slots run hourly, 08:00–20:00. Drivers can book any of the 7 days offered (today and the next 6).
+- **Every date and time is Lagos time (WAT)**, on the server (`APP_TIMEZONE`) and in the web app, whatever timezone the phone or laptop is set to: "Today", the day tabs and every slot time follow Lagos.
 
 ## API input limits
 
@@ -116,6 +121,9 @@ Anything outside these is a 400 with a message saying which field is wrong (neve
   - **Archive** a station or a charger to take it out of service. Drivers stop seeing it and it can't be booked, but its bookings and history are kept and **Restore** brings it back. Something with upcoming bookings can't be archived until those are cancelled.
   - **Cancel** an upcoming booking from the station's Bookings tab, with a reason (at least 5 characters) that the audit log keeps. The slot is freed. On phones the bookings list shows one card per booking.
 - **Operators adding a station:** the location map is large (about 60% of the screen height, full width, and full screen on request). Search an address, use your location, click the map, or drag the pin. Address search uses MapTiler when `VITE_MAPTILER_KEY` is set, and OpenStreetMap otherwise.
+- **On phones** every page is laid out for a 390px-wide screen: the map sits above a search box and the station list (filters fold away behind a **Filters** button), the week of day tabs scrolls sideways, the admin tabs sit in a 3 × 2 grid, and an operator picks a station from a menu so its details show straight away. Buttons and links are at least 40px tall.
+- **Accessibility:** text and buttons meet WCAG AA contrast (the brand green is `#0A7A45`, 5.4:1 on white), disabled buttons use a muted style rather than fading out, every page has a `<main>` landmark and one `<h1>`, and each map pin is a button named after its station ("Lekki Phase 1 Charging Hub, 1 of 2 chargers online").
+- **The logo** is a map pin with a lightning bolt through it, dark green with a lime bolt (`client/src/components/Logo.jsx`, used in the navbar and on the login and sign-up pages); `client/public/favicon.svg` is the same drawing.
 - **When the API is asleep** (the free host sleeps when idle), the app shows a banner instead of failing silently, retries reads, and the login page says it can't reach the server rather than blaming your password.
 
 ## Tests
@@ -124,6 +132,8 @@ Anything outside these is a 400 with a message saying which field is wrong (neve
 cd server && npm test     # Jest + Supertest against SQLite (includes rolling the migrations back and forward)
 cd client && npm test     # Vitest + React Testing Library + msw
 ```
+
+Both suites are independent of the machine's timezone; `TZ=UTC npm test` should pass too.
 
 To run the API tests against real Postgres (this also exercises the row-lock path in the double-booking tests), point `TEST_DATABASE_URL` at a throwaway database. The suite deletes every row, so never use your real database:
 
@@ -153,6 +163,8 @@ Do these in order. The API needs the database first, and the web app needs the A
 7. Log in on the Vercel URL and run through both demo journeys.
 
 ### Updating a database that already exists
+
+**Car connectors (migration `20260101000013_user_connector_types`).** This adds an empty `users.connector_types` (text holding a JSON list). Nothing else changes, and every driver keeps seeing every charger until they set it. Render runs it on deploy.
 
 **Station approval and archiving (migration `20260101000012_station_approval_and_archiving`).** This adds `stations.approval_status` (every existing station becomes `approved`), `stations.review_note`, and `archived_at` on stations and chargers (empty for all). No data changes. Render runs it on deploy.
 

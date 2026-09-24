@@ -57,12 +57,13 @@ async function listStations(filters = {}, viewer = null) {
   if (viewer?.role === 'operator') idsQuery = idsQuery.where('s.owner_id', viewer.id);
 
   const needsChargerJoin =
-    filters.status || filters.connectorType || filters.minPrice != null || filters.maxPrice != null;
+    filters.status || filters.connectorTypes?.length || filters.minPrice != null || filters.maxPrice != null;
 
   if (needsChargerJoin) {
     idsQuery = idsQuery.innerJoin('chargers as c', 'c.station_id', 's.id').whereNull('c.archived_at');
     if (filters.status) idsQuery = idsQuery.where('c.status', filters.status);
-    if (filters.connectorType) idsQuery = idsQuery.where('c.connector_type', filters.connectorType);
+    // Every charger condition applies to the same charger: "online" and "CCS2" means an online CCS2.
+    if (filters.connectorTypes?.length) idsQuery = idsQuery.whereIn('c.connector_type', filters.connectorTypes);
     if (filters.minPrice != null) idsQuery = idsQuery.where('c.price_per_kwh', '>=', filters.minPrice);
     if (filters.maxPrice != null) idsQuery = idsQuery.where('c.price_per_kwh', '<=', filters.maxPrice);
   }

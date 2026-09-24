@@ -5,17 +5,23 @@ import StatusBadge from '../StatusBadge.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import DataTable from './DataTable.jsx';
 import { EmptyState, ErrorBanner, LoadState, RowButton, fieldClass } from './ui.jsx';
-import useAdminData, { errorMessage } from './useAdminData.js';
+import Pager from '../Pager.jsx';
+import useAdminData, { errorMessage, usePage } from './useAdminData.js';
+
+const PAGE_SIZE = 50;
 
 export default function BookingsTab() {
   const [status, setStatus] = useState('');
   const [stationId, setStationId] = useState('');
   const [date, setDate] = useState('');
-  const { data: bookings, error, reload } = useAdminData(
-    () => listBookings({ status, stationId, date }),
-    `${status}|${stationId}|${date}`,
+  const filterKey = `${status}|${stationId}|${date}`;
+  const [page, setPage] = usePage(filterKey);
+  const { data, error, reload } = useAdminData(
+    () => listBookings({ status, stationId, date, page, pageSize: PAGE_SIZE }),
+    `${filterKey}|${page}`,
     'Could not load bookings.'
   );
+  const bookings = data?.bookings;
   const { data: stations } = useAdminData(listStations, 'stations', 'Could not load stations.');
   const [confirming, setConfirming] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -125,7 +131,18 @@ export default function BookingsTab() {
         {bookings?.length === 0 ? (
           <EmptyState>No bookings match those filters.</EmptyState>
         ) : (
-          <DataTable label="Bookings" columns={columns} rows={bookings || []} getKey={(booking) => booking.id} />
+          <>
+            <Pager page={data?.page || 1} pageSize={PAGE_SIZE} total={data?.total} onPage={setPage} label="bookings, newest first" />
+            <DataTable label="Bookings" columns={columns} rows={bookings || []} getKey={(booking) => booking.id} />
+            <Pager
+              page={data?.page || 1}
+              pageSize={PAGE_SIZE}
+              total={data?.total}
+              onPage={setPage}
+              label="bookings, newest first"
+              announce={false}
+            />
+          </>
         )}
       </LoadState>
 

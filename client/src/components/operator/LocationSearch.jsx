@@ -57,14 +57,14 @@ export default function LocationSearch({ onSelect, children }) {
               search();
             }
           }}
-          className="w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-ink sm:flex-grow"
+          className="min-h-10 w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-ink sm:flex-grow"
         />
         <div className="flex gap-2">
           <button
             type="button"
             onClick={search}
             disabled={status.busy || query.trim().length < 2}
-            className="rounded-lg bg-green px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-green px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
           >
             Search
           </button>
@@ -72,7 +72,7 @@ export default function LocationSearch({ onSelect, children }) {
             type="button"
             onClick={useMyLocation}
             disabled={status.busy}
-            className="whitespace-nowrap rounded-lg border border-green px-3 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:opacity-50"
+            className="whitespace-nowrap rounded-lg border border-green px-3 py-2.5 text-[13px] font-semibold text-green-dark hover:bg-green-tint disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
           >
             Use my location
           </button>

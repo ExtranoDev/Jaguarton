@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getSlots, setSlotBlocked } from '../../api/slots.js';
-import { dayLabel, formatTime, nextDays, toLocalDateString } from '../../utils/format.js';
+import { dayLabel, formatTime, nextDays } from '../../utils/format.js';
 
 const DAYS = 7;
 
@@ -8,7 +8,7 @@ const DAYS = 7;
 // unblock it again. Booked and already-started slots can't be changed here.
 export default function ChargerSlots({ charger }) {
   const days = nextDays(DAYS);
-  const [date, setDate] = useState(toLocalDateString(days[0]));
+  const [date, setDate] = useState(days[0]);
   const [slots, setSlots] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
@@ -42,7 +42,7 @@ export default function ChargerSlots({ charger }) {
     <div className="flex flex-col gap-3 border-t border-border pt-3">
       <div role="group" aria-label={`Day for charger ${charger.id}'s slots`} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {days.map((day, index) => {
-          const value = toLocalDateString(day);
+          const value = day;
           const active = value === date;
           return (
             <button
@@ -83,7 +83,7 @@ export default function ChargerSlots({ charger }) {
                   disabled={locked || busyId === slot.id}
                   aria-label={`${label} ${formatTime(slot.start_time)}`}
                   onClick={() => toggle(slot)}
-                  className={`min-h-10 rounded-md px-2.5 text-xs font-semibold disabled:opacity-60 ${
+                  className={`min-h-10 rounded-md px-2.5 text-xs font-semibold disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none ${
                     locked ? 'text-ink-2' : slot.status === 'blocked' ? 'text-green-dark' : 'text-terracotta'
                   }`}
                 >

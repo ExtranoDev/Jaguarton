@@ -40,3 +40,12 @@ describe('zoom animation after the map is removed', () => {
     container.remove();
   });
 });
+
+describe('map pins', () => {
+  it('carry an escaped, screen-reader-only name', async () => {
+    const { pinIcon } = await import('../src/utils/leaflet.js');
+    const html = pinIcon('#0A7A45', false, 'Ada\'s <b>Hub</b>, 1 of 2 chargers online').options.html;
+    expect(html).toContain('<span class="sr-only">Ada&#39;s &lt;b&gt;Hub&lt;/b&gt;, 1 of 2 chargers online</span>');
+    expect(html).not.toContain('<b>');
+  });
+});

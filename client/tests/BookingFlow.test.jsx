@@ -5,8 +5,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../src/context/AuthContext.jsx';
 import StationDetailPage from '../src/pages/StationDetailPage.jsx';
 import BookingConfirmationPage from '../src/pages/BookingConfirmationPage.jsx';
-import { toLocalDateString } from '../src/utils/format.js';
+import { addDays, toLagosDateString } from '../src/utils/format.js';
 import { API, server, signInAs } from './server.js';
+import { lagosIso } from './time.js';
 
 const driver = { id: 2, name: 'Chidi Nwosu', email: 'driver@example.com', role: 'driver' };
 const operator = { id: 1, name: 'Adaeze Okafor', email: 'operator@example.com', role: 'operator' };
@@ -21,13 +22,9 @@ const station = {
   ],
 };
 
-// Slots start tomorrow so the UI never treats them as "already started".
+// Slots start tomorrow (in Lagos) so the UI never treats them as "already started".
 function slot(id, hour, status = 'available') {
-  const start = new Date();
-  start.setDate(start.getDate() + 1);
-  start.setHours(hour, 0, 0, 0);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
-  return { id, charger_id: 1, start_time: start.toISOString(), end_time: end.toISOString(), status };
+  return { id, charger_id: 1, start_time: lagosIso(1, hour), end_time: lagosIso(1, hour + 1), status };
 }
 
 function bookingFor(slotRow, id, reference) {
@@ -196,11 +193,61 @@ describe('booking flow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Tomorrow' }));
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
     await waitFor(() => expect(requestedDates).toHaveLength(2));
-    expect(requestedDates[0]).toBe(toLocalDateString(new Date()));
-    expect(requestedDates[1]).toBe(toLocalDateString(tomorrow));
+    expect(requestedDates[0]).toBe(toLagosDateString());
+    expect(requestedDates[1]).toBe(addDays(toLagosDateString(), 1));
+  });
+
+  it("warns (but still books) when the charger doesn't fit the driver's car, and marks each charger", async () => {
+    const user = userEvent.setup();
+    let requestedBody;
+    mockCommon({ ...driver, connector_types: ['Type2_AC'] });
+    server.use(
+      http.get(`${API}/chargers/1/slots`, () => HttpResponse.json({ slots: [slot(101, 10)] })),
+      http.post(`${API}/bookings`, async ({ request }) => {
+        requestedBody = await request.json();
+        return HttpResponse.json({ booking: bookingFor(slot(101, 10), 55, 'EVB-7F3K9Q') }, { status: 201 });
+      }),
+      http.get(`${API}/bookings/55`, () => HttpResponse.json({ booking: bookingFor(slot(101, 10), 55, 'EVB-7F3K9Q') }))
+    );
+
+    renderStationPage();
+
+    expect(await screen.findByRole('button', { name: /CCS2 · DC Fast.*Needs an adapter/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Type 2 · AC.*Fits your car/ })).toBeInTheDocument();
+    expect(await screen.findByText(/Check your adapter./)).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent('your car is set to Type 2 · AC');
+
+    await selectSlot(user, '10:00');
+    const book = screen.getByRole('button', { name: 'Book Anyway →' });
+    expect(book).toHaveAccessibleDescription(/Check your adapter/);
+    await user.click(book);
+
+    expect(await screen.findByRole('heading', { name: 'Booking Confirmed!' })).toBeInTheDocument();
+    expect(requestedBody).toEqual({ slotId: 101 });
+  });
+
+  it("says nothing about fit when the driver hasn't set their car, and links to where to set it", async () => {
+    mockCommon();
+    server.use(http.get(`${API}/chargers/1/slots`, () => HttpResponse.json({ slots: [slot(101, 10)] })));
+
+    renderStationPage();
+
+    expect(await screen.findByRole('link', { name: "Add your car's connectors" })).toHaveAttribute('href', '/account');
+    expect(screen.queryByText(/Fits your car|Needs an adapter|Check your adapter/)).not.toBeInTheDocument();
+    expect(await bookButton()).toBeInTheDocument();
+  });
+
+  it('offers all 7 bookable days, starting today', async () => {
+    mockCommon();
+    server.use(http.get(`${API}/chargers/1/slots`, () => HttpResponse.json({ slots: [slot(101, 10)] })));
+
+    renderStationPage();
+
+    const days = within(await screen.findByRole('group', { name: 'Day' })).getAllByRole('button');
+    expect(days).toHaveLength(7);
+    expect(days[0]).toHaveTextContent('Today');
+    expect(days[0]).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('only offers charger selection for online chargers', async () => {

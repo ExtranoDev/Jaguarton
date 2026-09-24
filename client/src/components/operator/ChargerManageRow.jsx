@@ -15,7 +15,7 @@ const STATUSES = [
   { value: 'unavailable', label: 'Unavailable', active: 'border-terracotta bg-terracotta text-white' },
 ];
 
-const smallButton = 'min-h-10 rounded-lg border px-3 text-[13px] font-semibold disabled:opacity-50';
+const smallButton = 'min-h-10 rounded-lg border px-3 text-[13px] font-semibold disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none';
 
 // One charger on the operator's station page: price, status, its slots, and archive/restore.
 // An archived charger only offers Restore.
@@ -94,20 +94,20 @@ export default function ChargerManageRow({ charger, busy, onStatusChange, onPric
               autoFocus
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              className="w-24 rounded-lg border border-border px-2.5 py-1.5 text-sm"
+              className="min-h-10 w-24 rounded-lg border border-border px-2.5 py-1.5 text-sm"
             />
             <span className="text-sm text-ink-2">/kWh</span>
             <button
               type="submit"
               disabled={!priceValid || busy}
-              className="rounded-lg bg-green px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
+              className="min-h-10 rounded-lg bg-green px-3 py-1.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="rounded-lg border border-border px-3 py-1.5 text-[13px] text-ink-2"
+              className="min-h-10 rounded-lg border border-border px-3 py-1.5 text-[13px] text-ink-2"
             >
               Cancel
             </button>
@@ -117,7 +117,7 @@ export default function ChargerManageRow({ charger, busy, onStatusChange, onPric
             type="button"
             onClick={startEditing}
             aria-label={`Edit price for charger ${charger.id}`}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[13px] font-semibold text-ink hover:border-green"
+            className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[13px] font-semibold text-ink hover:border-green"
           >
             {formatNaira(charger.price_per_kwh)} /kWh
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#55665C" strokeWidth="2">
@@ -137,7 +137,7 @@ export default function ChargerManageRow({ charger, busy, onStatusChange, onPric
                 aria-pressed={active}
                 disabled={busy}
                 onClick={() => !active && onStatusChange(charger, status.value)}
-                className={`rounded-full border px-3 py-1.5 text-xs disabled:opacity-60 ${
+                className={`min-h-10 rounded-full border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none ${
                   active ? `${status.active} font-semibold` : 'border-border bg-surface text-ink-2 hover:border-ink-2'
                 }`}
               >
@@ -152,11 +152,12 @@ export default function ChargerManageRow({ charger, busy, onStatusChange, onPric
         <button
           type="button"
           aria-expanded={showSlots}
-          aria-label={`${showSlots ? 'Hide' : 'Show'} slots for charger ${charger.id}`}
           onClick={() => setShowSlots(!showSlots)}
           className={`${smallButton} border-border text-ink hover:border-green`}
         >
-          {showSlots ? 'Hide slots' : 'Slots: block or unblock'}
+          {/* The name starts with the visible words, so voice control ("click Slots") finds it. */}
+          {showSlots ? 'Hide slots' : 'Slots: block or unblock'}{' '}
+          <span className="sr-only">for charger {charger.id}</span>
         </button>
         <button
           type="button"

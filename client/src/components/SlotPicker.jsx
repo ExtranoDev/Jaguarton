@@ -1,4 +1,4 @@
-import { dayLabel, formatTime, toLocalDateString } from '../utils/format.js';
+import { dayLabel, formatTime } from '../utils/format.js';
 
 function slotState(slot, selectedSlotId, now) {
   if (slot.id === selectedSlotId) return 'selected';
@@ -11,7 +11,7 @@ const SLOT_STYLES = {
   selected: 'border-2 border-green bg-green font-bold text-white',
   available: 'border border-green text-ink hover:bg-green-tint',
   taken: 'cursor-not-allowed border border-border bg-sage-tint text-ink-2',
-  passed: 'cursor-not-allowed border border-border bg-sage-tint text-ink-2 opacity-60',
+  passed: 'cursor-not-allowed border border-dashed border-border bg-sage-tint text-ink-2 line-through',
 };
 
 const STATE_LABELS = {
@@ -34,22 +34,21 @@ export default function SlotPicker({
   const now = Date.now();
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+      <div className="flex min-w-0 flex-col gap-3">
         <h2 className="text-lg font-semibold text-ink">Choose a time — {chargerLabel}</h2>
-        <div className="flex gap-2">
+        {/* A week of days (Lagos time): scrolls sideways when it doesn't fit. */}
+        <div role="group" aria-label="Day" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {days.map((day, index) => {
-            const value = toLocalDateString(day);
-            const active = value === selectedDate;
+            const active = day === selectedDate;
             return (
               <button
-                key={value}
+                key={day}
                 type="button"
-                onClick={() => onDateChange(value)}
-                className={`rounded-full px-3.5 py-1.5 text-[13px] ${
-                  active
-                    ? 'bg-green font-semibold text-white'
-                    : 'border border-border text-ink-2 hover:border-green'
+                aria-pressed={active}
+                onClick={() => onDateChange(day)}
+                className={`min-h-10 flex-shrink-0 whitespace-nowrap rounded-full px-3.5 text-[13px] ${
+                  active ? 'bg-green font-semibold text-white' : 'border border-border text-ink-2 hover:border-green'
                 }`}
               >
                 {dayLabel(day, index)}
@@ -80,7 +79,7 @@ export default function SlotPicker({
                 aria-pressed={state === 'selected'}
                 aria-label={`${formatTime(slot.start_time)}, ${STATE_LABELS[state]}`}
                 onClick={() => onSelectSlot(slot)}
-                className={`rounded-[10px] py-2.5 text-[13px] ${SLOT_STYLES[state]}`}
+                className={`min-h-10 rounded-[10px] py-2.5 text-[13px] ${SLOT_STYLES[state]}`}
               >
                 {formatTime(slot.start_time)}
               </button>
@@ -89,7 +88,7 @@ export default function SlotPicker({
         </div>
       )}
 
-      <div className="flex gap-4 text-xs text-ink-2">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-green" />
           Available
@@ -101,6 +100,10 @@ export default function SlotPicker({
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-border bg-sage-tint" />
           Booked
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-[3px] border border-dashed border-ink-2 bg-sage-tint" />
+          Started
         </span>
       </div>
     </div>

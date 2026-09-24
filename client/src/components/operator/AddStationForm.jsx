@@ -98,7 +98,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel, 
               step="any"
               value={form.lat}
               onChange={(e) => setForm({ ...form, lat: e.target.value })}
-              className="rounded-lg border border-border px-3 py-2 text-sm"
+              className="min-h-10 rounded-lg border border-border px-3 py-2 text-sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -111,7 +111,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel, 
               step="any"
               value={form.lng}
               onChange={(e) => setForm({ ...form, lng: e.target.value })}
-              className="rounded-lg border border-border px-3 py-2 text-sm"
+              className="min-h-10 rounded-lg border border-border px-3 py-2 text-sm"
             />
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function AddStationForm({ submitting, error, onSubmit, onCancel, 
         <button
           type="submit"
           disabled={!valid || submitting}
-          className="rounded-lg bg-green px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-lg bg-green px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
         >
           {editing ? (submitting ? 'Saving…' : 'Save changes') : submitting ? 'Creating…' : 'Create station'}
         </button>

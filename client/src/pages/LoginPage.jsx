@@ -35,7 +35,7 @@ export default function LoginPage() {
     <AuthLayout mode="login">
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
         <div>
-          <h2 className="font-display text-xl font-semibold text-ink">Welcome back</h2>
+          <h1 className="font-display text-xl font-semibold text-ink">Welcome back</h1>
           <p className="mt-1 text-sm text-ink-2">Log in to find and book a charging slot.</p>
         </div>
 
@@ -82,7 +82,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-lg bg-volt py-3.5 text-[15px] font-bold text-volt-ink shadow-glow-volt disabled:opacity-60"
+          className="w-full rounded-lg bg-volt py-3.5 text-[15px] font-bold text-volt-ink shadow-glow-volt disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
         >
           {submitting ? 'Logging in…' : 'Log in →'}
         </button>

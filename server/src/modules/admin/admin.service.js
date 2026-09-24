@@ -17,13 +17,22 @@ const { normalizeEmail } = require('../auth/auth.service');
 const { topUpSlots } = require('../slots/slots.service');
 const { buildSlotRows } = require('../slots/slotRows');
 
-const LIST_LIMIT = 200;
+const DEFAULT_PAGE_SIZE = 50;
 const UTILISATION_DAYS = 7;
 
 // Every state-changing admin action writes an audit entry (audit.record) on the same transaction
 // as the change itself, so an action and its entry succeed or fail together.
 
 const count = (row) => Number(row?.n || 0);
+
+// One page of a list, plus the total that matches the filters (the same shape as the audit log).
+async function paged(query, { page = 1, pageSize = DEFAULT_PAGE_SIZE } = {}, order) {
+  const [{ n }] = await query.clone().clearSelect().clearOrder().count('* as n');
+  const rows = await order(query)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  return { rows, total: Number(n), page, pageSize };
+}
 
 // ---------------------------------------------------------------- overview
 
@@ -82,7 +91,8 @@ async function getOverview() {
 }
 
 // How much of the next 7 days' (today included, in APP_TIMEZONE) bookable capacity is
-// booked. Capacity = booked slots + available slots that drivers could book: an online, unarchived
+// booked. Only slots that haven't started yet count: an unbooked slot from this morning is no
+// longer capacity anyone could use. Capacity = booked slots + available slots that drivers could book: an online, unarchived
 // charger at an active, approved, unarchived station whose operator isn't suspended. Blocked slots
 // and slots nobody could book don't count against it.
 // Grouping by start time (not by slot) keeps this small however many chargers exist.
@@ -100,6 +110,7 @@ async function getUtilisation() {
     .innerJoin('users as owner', 'owner.id', 's.owner_id')
     .where('sl.start_time', '>=', windowStart.toISOString())
     .andWhere('sl.start_time', '<', windowEnd.toISOString())
+    .andWhere('sl.start_time', '>', new Date().toISOString())
     .select('sl.start_time', 'sl.status', db.raw(`${bookable} AS bookable`))
     .count('* as n')
     .groupByRaw(`sl.start_time, sl.status, ${bookable}`);
@@ -135,7 +146,7 @@ function toAdminUser(user) {
 
 const escapeLike = (text) => text.replace(/[\\%_]/g, (char) => `\\${char}`);
 
-async function listUsers({ role, q } = {}) {
+async function listUsers({ role, q, page, pageSize } = {}) {
   let query = db('users').select('id', 'name', 'email', 'role', 'is_active', 'created_at');
   if (role) query = query.where({ role });
   if (q) {
@@ -146,8 +157,8 @@ async function listUsers({ role, q } = {}) {
         .orWhereRaw("lower(email) like ? escape '\\'", [pattern])
     );
   }
-  const users = await query.orderBy('id').limit(LIST_LIMIT);
-  return users.map(toAdminUser);
+  const result = await paged(query, { page, pageSize }, (rows) => rows.orderBy('id'));
+  return { users: result.rows.map(toAdminUser), total: result.total, page: result.page, pageSize: result.pageSize };
 }
 
 // Lock every active admin row so two admins removing each other at the same time are
@@ -408,7 +419,7 @@ const toAdminBooking = (booking) => ({
   updated_at: toIsoString(booking.updated_at),
 });
 
-async function listBookings({ status, stationId, date } = {}) {
+async function listBookings({ status, stationId, date, page, pageSize } = {}) {
   let query = adminBookings();
   if (status) query = query.andWhere('b.status', status);
   if (stationId) query = query.andWhere('b.station_id', stationId);
@@ -417,8 +428,10 @@ async function listBookings({ status, stationId, date } = {}) {
     const { start, end } = dayBounds(date); // the slot's day in APP_TIMEZONE, not the booking's created_at
     query = query.andWhere('sl.start_time', '>=', start.toISOString()).andWhere('sl.start_time', '<', end.toISOString());
   }
-  const bookings = await query.orderBy('b.created_at', 'desc').orderBy('b.id', 'desc').limit(LIST_LIMIT);
-  return bookings.map(toAdminBooking);
+  const result = await paged(query, { page, pageSize }, (rows) =>
+    rows.orderBy('b.created_at', 'desc').orderBy('b.id', 'desc')
+  );
+  return { bookings: result.rows.map(toAdminBooking), total: result.total, page: result.page, pageSize: result.pageSize };
 }
 
 async function cancelBooking(adminId, bookingId, reason, context = {}) {
@@ -436,7 +449,7 @@ async function cancelBooking(adminId, bookingId, reason, context = {}) {
 // ---------------------------------------------------------- slot coverage
 
 // For every charger, how many slots it has on each of the next `days` days (today
-// included, in APP_TIMEZONE). A "gap" is a day with none that a top-up could still fill:
+// included, in APP_TIMEZONE), counting only slots that haven't started yet. A "gap" is a day with none that a top-up could still fill:
 // today doesn't count once the last default slot has already started.
 async function getSlotCoverage({ days = 7 } = {}) {
   const today = toZonedDateString(new Date());
@@ -449,6 +462,7 @@ async function getSlotCoverage({ days = 7 } = {}) {
 
   const windowSlots = db('slots')
     .where('start_time', '>=', bounds[0].start.toISOString())
+    .andWhere('start_time', '>', new Date(now).toISOString())
     .andWhere('start_time', '<', bounds[bounds.length - 1].end.toISOString())
     .as('sl');
   const perDayCounts = bounds.map((range, i) =>

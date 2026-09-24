@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { createUser, listUsers, resetUserPassword, setUserActive, updateUser } from '../../api/admin.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { formatDate } from '../../utils/format.js';
 import StatusBadge from '../StatusBadge.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import DataTable from './DataTable.jsx';
 import { EmptyState, ErrorBanner, LoadState, RowButton, fieldClass, wideFieldClass } from './ui.jsx';
-import useAdminData, { errorMessage, useDebounced } from './useAdminData.js';
+import Pager from '../Pager.jsx';
+import useAdminData, { errorMessage, useDebounced, usePage } from './useAdminData.js';
+
+const PAGE_SIZE = 50;
 
 const MIN_PASSWORD_LENGTH = 8;
 const ROLES = [
@@ -129,7 +133,14 @@ export default function UsersTab() {
   const [role, setRole] = useState('');
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
-  const { data: users, error, reload } = useAdminData(() => listUsers({ role, q }), `${role}|${q}`, 'Could not load users.');
+  const filterKey = `${role}|${q}`;
+  const [page, setPage] = usePage(filterKey);
+  const { data, error, reload } = useAdminData(
+    () => listUsers({ role, q, page, pageSize: PAGE_SIZE }),
+    `${filterKey}|${page}`,
+    'Could not load users.'
+  );
+  const users = data?.users;
 
   // One dialog at a time: { type: 'suspend' | 'create' | 'edit' | 'reset' | 'secret', user?, password? }
   const [dialog, setDialog] = useState(null);
@@ -231,7 +242,7 @@ export default function UsersTab() {
     {
       key: 'joined',
       header: 'Joined',
-      cell: (user) => new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      cell: (user) => formatDate(user.created_at),
     },
     {
       key: 'action',
@@ -288,7 +299,7 @@ export default function UsersTab() {
         <button
           type="button"
           onClick={openCreate}
-          className="rounded-lg bg-green px-4 py-2.5 text-sm font-semibold text-white sm:ml-auto"
+          className="min-h-10 rounded-lg bg-green px-4 py-2.5 text-sm font-semibold text-white sm:ml-auto"
         >
           + Add user
         </button>
@@ -305,7 +316,11 @@ export default function UsersTab() {
         {users?.length === 0 ? (
           <EmptyState>No users match those filters.</EmptyState>
         ) : (
-          <DataTable label="Users" columns={columns} rows={users || []} getKey={(user) => user.id} />
+          <>
+            <Pager page={data?.page || 1} pageSize={PAGE_SIZE} total={data?.total} onPage={setPage} label="users" />
+            <DataTable label="Users" columns={columns} rows={users || []} getKey={(user) => user.id} />
+            <Pager page={data?.page || 1} pageSize={PAGE_SIZE} total={data?.total} onPage={setPage} label="users" announce={false} />
+          </>
         )}
       </LoadState>
 

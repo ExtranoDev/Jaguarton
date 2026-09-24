@@ -33,6 +33,12 @@ const isActiveBody = body('isActive')
   .custom((value) => typeof value === 'boolean')
   .withMessage('isActive must be true or false');
 
+// The users and bookings lists are paged like the audit log.
+const pageQuery = [
+  intIn(query, 'page', { min: 1, max: 100000 }, 'page must be a positive whole number').optional(),
+  intIn(query, 'pageSize', { min: 1, max: 100 }, 'pageSize must be between 1 and 100').optional(),
+];
+
 // Everything under /admin is admin-only. Authentication runs first (401), then the role (403).
 router.use('/admin', requireAuth, requireRole('admin'));
 
@@ -43,6 +49,7 @@ router.get(
   [
     oneOf(query, 'role', ['driver', 'operator', 'admin']).optional({ values: 'falsy' }),
     query('q').optional({ values: 'falsy' }).isString().isLength({ max: 100 }).withMessage('q is too long'),
+    ...pageQuery,
   ],
   validate,
   controller.listUsers
@@ -99,6 +106,7 @@ router.get(
     oneOf(query, 'status', ['confirmed', 'cancelled']).optional({ values: 'falsy' }),
     optionalIdQuery('stationId'),
     query('date').optional({ values: 'falsy' }).isString().bail().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('date must be YYYY-MM-DD'),
+    ...pageQuery,
   ],
   validate,
   controller.listBookings

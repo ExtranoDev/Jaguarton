@@ -41,7 +41,7 @@ export function RowButton({ danger = false, children, ...props }) {
     <button
       type="button"
       {...props}
-      className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-semibold disabled:opacity-50 ${
+      className={`min-h-10 whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-semibold disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none ${
         danger
           ? 'border-terracotta text-terracotta hover:bg-terracotta-tint'
           : 'border-green text-green-dark hover:bg-green-tint'

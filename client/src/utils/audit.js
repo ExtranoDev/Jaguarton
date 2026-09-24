@@ -1,4 +1,4 @@
-import { formatDateTimeFull, formatNaira } from './format.js';
+import { CONNECTOR_LABELS, formatDateTimeFull, formatNaira } from './format.js';
 
 // Readable names for audit log actions. Unknown actions fall back to the raw name.
 export const ACTION_LABELS = {
@@ -59,6 +59,7 @@ const FIELD_LABELS = {
   status: 'Status',
   is_active: 'Active',
   connector_type: 'Connector',
+  connector_types: "Car's connectors",
   power_kw: 'Power (kW)',
   price_per_kwh: 'Price per kWh',
   approval_status: 'Approval',
@@ -68,6 +69,7 @@ const FIELD_LABELS = {
 const show = (field, value) => {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  if (Array.isArray(value)) return value.length ? value.map((item) => CONNECTOR_LABELS[item] || item).join(', ') : 'none';
   if (field === 'price_per_kwh') return formatNaira(value);
   return String(value);
 };

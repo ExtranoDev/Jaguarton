@@ -20,7 +20,8 @@ const me = asyncHandler(async (req, res) => {
 });
 
 const updateMe = asyncHandler(async (req, res) => {
-  const user = await authService.updateProfile(req.user.id, { name: req.body.name }, contextFrom(req));
+  const { name, connectorTypes } = req.body;
+  const user = await authService.updateProfile(req.user.id, { name, connectorTypes }, contextFrom(req));
   res.status(200).json({ user });
 });
 

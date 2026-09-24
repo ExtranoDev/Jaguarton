@@ -129,7 +129,7 @@ export default function ConfirmDialog({
               ref={needsReason ? undefined : initialFocus}
               onClick={onCancel}
               disabled={busy}
-              className="rounded-lg border border-border px-4 py-2.5 text-[13px] font-semibold text-ink-2 hover:border-ink-2 disabled:opacity-60"
+              className="rounded-lg border border-border px-4 py-2.5 text-[13px] font-semibold text-ink-2 hover:border-ink-2 disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
             >
               Go back
             </button>
@@ -137,7 +137,7 @@ export default function ConfirmDialog({
           <button
             type="submit"
             disabled={!canConfirm}
-            className={`rounded-lg px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50 ${
+            className={`rounded-lg px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none ${
               tone === 'primary' ? 'bg-green' : 'bg-terracotta'
             }`}
           >

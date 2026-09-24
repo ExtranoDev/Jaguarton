@@ -10,7 +10,9 @@ export default {
         'ink-2': '#55665C',
         border: '#E3E1D6',
         green: {
-          DEFAULT: '#0E8F52',
+          // 5.4:1 against white and at least 4.7:1 on every tint we use, so green text and white
+          // text on green buttons both pass WCAG AA (the old #0E8F52 was 4.1:1).
+          DEFAULT: '#0A7A45',
           dark: '#0C2418',
           tint: '#E1F5EA',
         },
@@ -23,7 +25,7 @@ export default {
           tint: '#EEF0EC',
         },
         terracotta: {
-          DEFAULT: '#B4482A',
+          DEFAULT: '#A8401F', // 5.1:1 on its tint
           tint: '#F7E7E1',
         },
       },
@@ -32,7 +34,7 @@ export default {
         body: ['Manrope', 'sans-serif'],
       },
       boxShadow: {
-        'glow-green': '0 0 14px rgba(14,143,82,0.45)',
+        'glow-green': '0 0 14px rgba(10,122,69,0.45)',
         'glow-volt': '0 0 26px rgba(212,255,61,0.5)',
       },
     },

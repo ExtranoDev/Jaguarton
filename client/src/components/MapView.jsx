@@ -25,9 +25,16 @@ function FitToStations({ stations }) {
 
 function colorForStation(station) {
   const chargers = station.chargers || [];
-  if (chargers.some((c) => c.status === 'online')) return '#0E8F52';
-  if (chargers.every((c) => c.status === 'unavailable')) return '#B4482A';
+  if (chargers.some((c) => c.status === 'online')) return '#0A7A45';
+  if (chargers.every((c) => c.status === 'unavailable')) return '#A8401F';
   return '#9AA39C';
+}
+
+// What a screen reader announces for a pin: "Ikeja Charging Hub, 2 of 3 chargers online".
+function markerLabel(station) {
+  const chargers = station.chargers || [];
+  const online = chargers.filter((c) => c.status === 'online').length;
+  return `${station.name}, ${online} of ${chargers.length} charger${chargers.length === 1 ? '' : 's'} online`;
 }
 
 export default function MapView({ stations, selectedStationId }) {
@@ -45,7 +52,8 @@ export default function MapView({ stations, selectedStationId }) {
             <Marker
               key={station.id}
               position={[Number(station.lat), Number(station.lng)]}
-              icon={pinIcon(colorForStation(station), isSelected)}
+              icon={pinIcon(colorForStation(station), isSelected, markerLabel(station))}
+              title={station.name}
             >
               <Popup>
                 <div className="flex min-w-[180px] flex-col gap-1">

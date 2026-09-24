@@ -32,7 +32,7 @@ export default function SignupPage() {
     <AuthLayout mode="signup">
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
         <div>
-          <h2 className="font-display text-xl font-semibold text-ink">Create your account</h2>
+          <h1 className="font-display text-xl font-semibold text-ink">Create your account</h1>
           <p className="mt-1 text-sm text-ink-2">Join as a driver or a station operator.</p>
         </div>
 
@@ -85,29 +85,33 @@ export default function SignupPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-[13px] font-semibold text-ink-2">I am a</span>
-            <div className="flex gap-2.5">
+            <span id="role-label" className="text-[13px] font-semibold text-ink-2">
+              I am a
+            </span>
+            <div role="group" aria-labelledby="role-label" className="flex gap-2.5">
               <button
                 type="button"
+                aria-pressed={form.role === 'driver'}
                 onClick={() => setForm({ ...form, role: 'driver' })}
-                className={`flex-grow rounded-lg border py-2.5 text-sm font-semibold ${
+                className={`min-h-10 flex-grow rounded-lg border py-2.5 text-sm font-semibold ${
                   form.role === 'driver'
                     ? 'border-green bg-green text-white'
                     : 'border-border text-ink-2'
                 }`}
               >
-                🚗 Driver
+                <span aria-hidden="true">🚗</span> Driver
               </button>
               <button
                 type="button"
+                aria-pressed={form.role === 'operator'}
                 onClick={() => setForm({ ...form, role: 'operator' })}
-                className={`flex-grow rounded-lg border py-2.5 text-sm font-semibold ${
+                className={`min-h-10 flex-grow rounded-lg border py-2.5 text-sm font-semibold ${
                   form.role === 'operator'
                     ? 'border-green bg-green text-white'
                     : 'border-border text-ink-2'
                 }`}
               >
-                🔌 Operator
+                <span aria-hidden="true">🔌</span> Operator
               </button>
             </div>
           </div>
@@ -116,7 +120,7 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-lg bg-volt py-3.5 text-[15px] font-bold text-volt-ink shadow-glow-volt disabled:opacity-60"
+          className="w-full rounded-lg bg-volt py-3.5 text-[15px] font-bold text-volt-ink shadow-glow-volt disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
         >
           {submitting ? 'Creating account…' : 'Create account →'}
         </button>

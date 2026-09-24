@@ -36,6 +36,15 @@ export default function useAdminData(fetcher, key, failureMessage = 'Could not l
   return { data, error, reload };
 }
 
+// The page of a paged list. It belongs to one set of filters (`filterKey`): when the filters change
+// the list goes back to page 1, without an effect resetting it.
+export function usePage(filterKey) {
+  const [state, setState] = useState({ filterKey, page: 1 });
+  const page = state.filterKey === filterKey ? state.page : 1;
+  const setPage = useCallback((next) => setState({ filterKey, page: next }), [filterKey]);
+  return [page, setPage];
+}
+
 // Follows a fast-changing value (a search box) after it has been still for `delay` ms.
 export function useDebounced(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);

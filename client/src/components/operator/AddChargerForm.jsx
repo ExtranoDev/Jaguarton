@@ -89,7 +89,7 @@ export default function AddChargerForm({ submitting, error, onSubmit, onCancel }
         <button
           type="submit"
           disabled={!valid || submitting}
-          className="rounded-lg bg-green px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-lg bg-green px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
         >
           {submitting ? 'Adding…' : 'Add charger'}
         </button>

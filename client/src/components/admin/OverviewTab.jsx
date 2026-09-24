@@ -105,7 +105,7 @@ function UtilisationChart({ utilisation }) {
         type="button"
         aria-expanded={showTable}
         onClick={() => setShowTable((shown) => !shown)}
-        className="self-start text-[13px] font-semibold text-green-dark underline underline-offset-2"
+        className="min-h-10 self-start text-[13px] font-semibold text-green-dark underline underline-offset-2"
       >
         {showTable ? 'Hide table' : 'Show as table'}
       </button>

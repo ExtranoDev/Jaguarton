@@ -51,27 +51,27 @@ export default function BookingConfirmationPage() {
   const cancelled = booking.status === 'cancelled';
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper p-6">
-      <div className="flex w-full max-w-[560px] flex-col items-center gap-5 rounded-[20px] border border-border bg-surface p-12 text-center shadow-xl">
+    <main className="flex min-h-screen items-center justify-center bg-paper px-4 py-6 sm:p-6">
+      <div className="flex w-full max-w-[560px] flex-col items-center gap-5 rounded-[20px] border border-border bg-surface p-6 text-center shadow-xl sm:p-12">
         <div
           className={`flex h-[72px] w-[72px] items-center justify-center rounded-full border-2 ${
             cancelled
               ? 'border-terracotta bg-terracotta-tint'
-              : 'border-green bg-green-tint shadow-[0_0_28px_rgba(14,143,82,0.45)]'
+              : 'border-green bg-green-tint shadow-[0_0_28px_rgba(10,122,69,0.45)]'
           }`}
         >
           {cancelled ? (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#B4482A" strokeWidth="3" strokeLinecap="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#A8401F" strokeWidth="3" strokeLinecap="round">
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>
           ) : (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0E8F52" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0A7A45" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6 9 17l-5-5" />
             </svg>
           )}
         </div>
 
-        <h1 className="font-display text-[28px] font-bold text-ink">
+        <h1 className="font-display text-2xl font-bold text-ink sm:text-[28px]">
           {cancelled ? 'Booking Cancelled' : 'Booking Confirmed!'}
         </h1>
         <p className="max-w-[380px] text-[15px] text-ink-2">
@@ -88,7 +88,7 @@ export default function BookingConfirmationPage() {
           <button
             type="button"
             onClick={copyReference}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-ink hover:border-green"
+            className="min-h-10 rounded-lg border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-ink hover:border-green"
           >
             {copied ? 'Copied!' : 'Copy'}
           </button>
@@ -117,7 +117,7 @@ export default function BookingConfirmationPage() {
           </div>
         </dl>
 
-        <div className="flex w-full gap-3">
+        <div className="flex w-full flex-col-reverse gap-3 sm:flex-row">
           <Link
             to="/"
             className="flex-grow rounded-[10px] border border-border py-3 text-sm font-semibold text-ink hover:border-green"
@@ -132,6 +132,6 @@ export default function BookingConfirmationPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

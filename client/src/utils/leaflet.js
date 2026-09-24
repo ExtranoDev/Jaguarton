@@ -33,13 +33,20 @@ export function tileLayerProps() {
   };
 }
 
-export function pinIcon(color, isSelected) {
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+
+// A round pin. Leaflet makes the marker a focusable role="button"; `label` (e.g. the station's name
+// and status) is its accessible name, as visually hidden text inside it. It goes into raw HTML, so
+// it is escaped: station names are typed by operators.
+export function pinIcon(color, isSelected, label = '') {
   const size = isSelected ? 26 : 16;
   const border = isSelected ? 4 : 3;
   const total = size + border * 2;
+  const name = label ? `<span class="sr-only">${escapeHtml(label)}</span>` : '';
   return L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:${border}px solid #ffffff;box-shadow:0 2px 6px rgba(18,33,28,0.3);"></div>`,
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:${border}px solid #ffffff;box-shadow:0 2px 6px rgba(18,33,28,0.3);">${name}</div>`,
     iconSize: [total, total],
     iconAnchor: [total / 2, total / 2],
     popupAnchor: [0, -total / 2],

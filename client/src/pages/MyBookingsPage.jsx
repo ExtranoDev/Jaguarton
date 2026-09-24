@@ -40,10 +40,10 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-paper">
+    <div className="flex h-dvh flex-col overflow-hidden bg-paper">
       <Navbar active="bookings" />
 
-      <div className="overflow-y-auto px-8 py-6">
+      <main className="overflow-y-auto px-4 py-6 sm:px-8">
         <h1 className="font-display text-[26px] font-bold text-ink">My Bookings</h1>
         <p className="mt-1 text-[13px] text-ink-2">
           {bookings.length} booking{bookings.length === 1 ? '' : 's'}
@@ -55,7 +55,7 @@ export default function MyBookingsPage() {
         {!loading && bookings.length === 0 && !error && (
           <div className="mt-6 rounded-2xl border border-border bg-surface p-10 text-center">
             <p className="text-ink-2">You haven&apos;t booked a charging slot yet.</p>
-            <Link to="/" className="mt-3 inline-block text-sm font-semibold text-green">
+            <Link to="/" className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-green">
               Find a charger →
             </Link>
           </div>
@@ -69,14 +69,14 @@ export default function MyBookingsPage() {
               <div
                 key={booking.id}
                 className={`flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 sm:flex-row sm:items-center sm:justify-between ${
-                  booking.status === 'cancelled' ? 'opacity-70' : ''
+                  booking.status === 'cancelled' ? 'border-dashed bg-sage-tint' : ''
                 }`}
               >
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <Link
                       to={`/bookings/${booking.id}/confirmation`}
-                      className="font-display text-base font-bold tracking-wide text-ink hover:text-green"
+                      className="inline-flex min-h-10 items-center font-display text-base font-bold tracking-wide text-ink hover:text-green"
                     >
                       {booking.booking_reference}
                     </Link>
@@ -88,7 +88,7 @@ export default function MyBookingsPage() {
                     {formatDateTimeRange(booking.start_time, booking.end_time)}
                   </span>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between gap-4 sm:justify-end">
                   <span className="text-sm font-bold text-green">
                     {formatNaira(booking.price_at_booking)}/kWh
                   </span>
@@ -97,7 +97,7 @@ export default function MyBookingsPage() {
                       type="button"
                       onClick={() => handleCancel(booking)}
                       disabled={cancellingId === booking.id}
-                      className="rounded-lg border border-border px-3.5 py-2 text-[13px] font-semibold text-ink-2 hover:border-terracotta hover:text-terracotta disabled:opacity-60"
+                      className="min-h-10 rounded-lg border border-border px-3.5 py-2 text-[13px] font-semibold text-ink-2 hover:border-terracotta hover:text-terracotta disabled:cursor-not-allowed disabled:border-border disabled:bg-sage-tint disabled:text-ink-2 disabled:shadow-none"
                     >
                       {cancellingId === booking.id ? 'Cancelling…' : 'Cancel'}
                     </button>
@@ -107,7 +107,7 @@ export default function MyBookingsPage() {
             );
           })}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

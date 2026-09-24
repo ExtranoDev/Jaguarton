@@ -9,8 +9,13 @@ const overview = asyncHandler(async (req, res) => {
 });
 
 const listUsers = asyncHandler(async (req, res) => {
-  const users = await adminService.listUsers({ role: req.query.role || undefined, q: req.query.q?.trim() || undefined });
-  res.status(200).json({ users });
+  const result = await adminService.listUsers({
+    role: req.query.role || undefined,
+    q: req.query.q?.trim() || undefined,
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 50,
+  });
+  res.status(200).json(result);
 });
 
 const createUser = asyncHandler(async (req, res) => {
@@ -62,12 +67,14 @@ const reviewStation = asyncHandler(async (req, res) => {
 
 const listBookings = asyncHandler(async (req, res) => {
   const { status, date } = req.query;
-  const bookings = await adminService.listBookings({
+  const result = await adminService.listBookings({
     status: status || undefined,
     stationId: optionalInt(req.query.stationId),
     date: date || undefined,
+    page: req.query.page || 1,
+    pageSize: req.query.pageSize || 50,
   });
-  res.status(200).json({ bookings });
+  res.status(200).json(result);
 });
 
 const cancelBooking = asyncHandler(async (req, res) => {

@@ -57,6 +57,10 @@ describe('the public station pages, seen by an operator', () => {
 
     expect(online.body.stations.map((s) => s.id)).toEqual([annas.station.id]);
     expect(chademo.body.stations).toEqual([]);
+    const either = await get('/api/stations?connectorType=CHAdeMO_DC,Type2_AC', anna);
+    expect(either.body.stations.map((s) => s.id)).toEqual([annas.station.id]);
+    expect((await get('/api/stations?connectorType=Type2_AC&status=online', anna)).body.stations).toEqual([]); // the Type 2 is offline
+    expect((await get('/api/stations?connectorType=CCS2_DC,Tesla', anna)).status).toBe(400);
   });
 
   it("returns 404 (not 403) for another operator's station, so its existence isn't revealed", async () => {
